@@ -1,3 +1,4 @@
+#include <chrono>
 //////////////////////////////////////////////////////////////////////////////////
 //	This file is part of the continued Journey MMORPG client					//
 //	Copyright (C) 2015-2019  Daniel Allendorf, Ryan Payton						//
@@ -33,28 +34,50 @@ namespace ms
 {
 	Error init()
 	{
+        using StartupClock = std::chrono::steady_clock;
+        const auto startup_begin = StartupClock::now();
+        auto startup_last = startup_begin;
+        auto startup_mark = [&](const char* label) {
+            const auto now = StartupClock::now();
+            const auto step_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - startup_last).count();
+            const auto total_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - startup_begin).count();
+            std::cerr << "[STARTUP] " << label << ": " << step_ms
+                      << " ms (total " << total_ms << " ms)" << std::endl;
+            startup_last = now;
+        };
+
 		if (Error error = Session::get().init())
 			return error;
+        startup_mark("session/connect");
 
 		if (Error error = NxFiles::init())
 			return error;
+        startup_mark("NX files");
 
 		if (Error error = Window::get().init())
 			return error;
+        startup_mark("window/OpenGL/fonts");
 
 		// TODO: (rich) fix
 		if (Error error = Music::init())
 			return error;
+        startup_mark("audio device");
 
 		if (Error error = Sound::init())
 			return error;
+        startup_mark("sound effects");
 
 
 		Char::init();
+        startup_mark("character poses");
 		DamageNumber::init();
+        startup_mark("damage-number assets");
 		MapPortals::init();
+        startup_mark("portal assets");
 		Stage::get().init();
+        startup_mark("game stage");
 		UI::get().init();
+        startup_mark("login UI creation");
 
 		return Error::NONE;
 	}

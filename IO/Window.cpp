@@ -116,9 +116,9 @@ namespace ms
 
 	void close_callback(GLFWwindow *window)
 	{
-		UI::get().send_close();
+		UI::get().quit();
 
-		glfwSetWindowShouldClose(window, GL_FALSE);
+		glfwSetWindowShouldClose(window, GLFW_TRUE);
 	}
 
 	Error Window::init()

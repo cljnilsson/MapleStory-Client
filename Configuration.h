@@ -279,7 +279,7 @@ namespace ms
 		const int32_t auto_cid = 0;
 		bool rightclicksell = false;
 		bool show_weekly = true;
-		bool start_shown = false;
+		bool start_shown = true;
 		std::string MACS;
 		std::string HWID;
 		int16_t MAXWIDTH;
