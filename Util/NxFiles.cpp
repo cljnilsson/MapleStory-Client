@@ -45,8 +45,7 @@ namespace ms
 
 			constexpr const char* POSTCHAOS_BITMAP = "Login.img/WorldSelect/BtChannel/layer:bg";
 
-			if (nl::nx::ui.resolve(POSTCHAOS_BITMAP).data_type() != nl::node::type::bitmap)
-				return Error::Code::WRONG_UI_FILE;
+			// UI version check disabled for v83 testing
 
 			return Error::Code::NONE;
 		}

@@ -51,7 +51,7 @@ if [[
     rm -rf "libs/glad"
     echo "fetching and building glad..."
     cd libs && \
-    git clone https://github.com/Dav1dde/glad.git && \
+    git clone --branch v0.1.36 https://github.com/Dav1dde/glad.git && \
     cd glad && \
     mkdir build && \
     cd build && \

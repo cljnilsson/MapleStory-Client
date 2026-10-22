@@ -57,7 +57,7 @@ namespace ms
 		channelid = Setting<DefaultChannel>::get().load();
 		uint8_t regionid = Setting<DefaultRegion>::get().load();
 
-		nl::node obj = nl::nx::mapLatest["Obj"]["login.img"];
+		nl::node obj = nl::nx::map["Obj"]["login.img"];
 		nl::node login = nl::nx::ui["Login.img"];
 		worldselect = login["WorldSelect"];
 		worldsrc = worldselect["BtWorld"]["release"];
@@ -66,26 +66,13 @@ namespace ms
 
 		set_region(regionid);
 
-		sprites.emplace_back(obj["WorldSelect"]["default"][0], background_pos);
+		// Original v83 world-selection background.
+        sprites.emplace_back(
+            obj["WorldSelect"]["neoCity"]["0"]["0"],
+            background_pos
+        );
 
-		std::vector<std::string> backgrounds = {"cernium"};
-		auto backgrounds_size = backgrounds.size();
-
-		if (backgrounds_size > 0)
-		{
-			if (backgrounds_size > 1)
-			{
-				auto randomizer = Randomizer();
-				int32_t index = randomizer.next_int(backgrounds_size);
-
-				sprites.emplace_back(obj["WorldSelect"][backgrounds[index]][0], background_pos);
-			} else
-			{
-				sprites.emplace_back(obj["WorldSelect"][backgrounds[0]][0], background_pos);
-			}
-		}
-
-		sprites.emplace_back(common["frame"], Point<int16_t>(400, 300));
+        sprites.emplace_back(common["frame"], Point<int16_t>(400, 300));
 		sprites.emplace_back(common["step"]["1"], Point<int16_t>(40, 0));
 
 		buttons[Buttons::BT_VIEWALL] = std::make_unique<MapleButton>(worldselect["BtViewAll"], Point<int16_t>(0, 53));
