@@ -15,6 +15,7 @@
 //	You should have received a copy of the GNU Affero General Public License	//
 //	along with this program.  If not, see <https://www.gnu.org/licenses/>.		//
 //////////////////////////////////////////////////////////////////////////////////
+#include "V83UIWindowCompat.h"
 #include "UIQuestLog.h"
 
 #include "../Components/MapleButton.h"
@@ -28,7 +29,7 @@ namespace ms
 		tab = Buttons::TAB0;
 
 		nl::node close = nl::nx::ui["Basic.img"]["BtClose3"];
-		nl::node quest = nl::nx::ui["UIWindow2.img"]["Quest"];
+		nl::node quest = v83ui::window("Quest");
 		nl::node list = quest["list"];
 
 		nl::node backgrnd = list["backgrnd"];

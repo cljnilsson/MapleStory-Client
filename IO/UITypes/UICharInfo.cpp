@@ -15,6 +15,7 @@
 //	You should have received a copy of the GNU Affero General Public License	//
 //	along with this program.  If not, see <https://www.gnu.org/licenses/>.		//
 //////////////////////////////////////////////////////////////////////////////////
+#include "V83UIWindowCompat.h"
 #include "UICharInfo.h"
 
 #include "../Components/MapleButton.h"
@@ -30,7 +31,7 @@ namespace ms
 	UICharInfo::UICharInfo(int32_t cid) : UIDragElement<PosCHARINFO>(), is_loading(true), timestep(Constants::TIMESTEP), personality_enabled(false), collect_enabled(false), damage_enabled(false), item_enabled(false)
 	{
 		nl::node close = nl::nx::ui["Basic.img"]["BtClose3"];
-		nl::node UserInfo = nl::nx::ui["UIWindow2.img"]["UserInfo"];
+		nl::node UserInfo = v83ui::window("UserInfo");
 		nl::node character = UserInfo["character"];
 		nl::node backgrnd = character["backgrnd"];
 

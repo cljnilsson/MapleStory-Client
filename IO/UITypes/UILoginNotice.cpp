@@ -15,6 +15,7 @@
 //	You should have received a copy of the GNU Affero General Public License	//
 //	along with this program.  If not, see <https://www.gnu.org/licenses/>.		//
 //////////////////////////////////////////////////////////////////////////////////
+#include "V83UIWindowCompat.h"
 #include "UILoginNotice.h"
 
 #include "../UI.h"
@@ -320,7 +321,7 @@ namespace ms
 
 	UIKeySelect::UIKeySelect(std::function<void(bool)> oh, bool l) : okhandler(oh), login(l)
 	{
-		nl::node KeyType = nl::nx::ui["UIWindow2.img"]["KeyConfig"]["KeyType"];
+		nl::node KeyType = v83ui::window("KeyConfig")["KeyType"];
 		nl::node backgrnd = KeyType["backgrnd"];
 
 		sprites.emplace_back(backgrnd);
@@ -382,7 +383,7 @@ namespace ms
 
 	UIKeyConfirm::UIKeyConfirm(bool alternate, std::function<void()> oh, bool l) : okhandler(oh), login(l)
 	{
-		nl::node alert = nl::nx::ui["UIWindow2.img"]["KeyConfig"]["KeyType"]["alert"];
+		nl::node alert = v83ui::window("KeyConfig")["KeyType"]["alert"];
 		nl::node background = alternate ? alert["alternate"] : alert["default"];
 
 		sprites.emplace_back(background);

@@ -15,6 +15,7 @@
 //	You should have received a copy of the GNU Affero General Public License	//
 //	along with this program.  If not, see <https://www.gnu.org/licenses/>.		//
 //////////////////////////////////////////////////////////////////////////////////
+#include "V83UIWindowCompat.h"
 #include "UIMiniMap.h"
 
 #include "UIWorldMap.h"
@@ -43,8 +44,8 @@ namespace ms
 		simpleMode = Setting<MiniMapSimpleMode>::get().load();
 
 		std::string node = simpleMode ? "MiniMapSimpleMode" : "MiniMap";
-		MiniMap = nl::nx::ui["UIWindow2.img"][node];
-		listNpc = nl::nx::ui["UIWindow2.img"]["MiniMap"]["ListNpc"];
+		MiniMap = v83ui::minimap(node);
+		listNpc = v83ui::window("MiniMap")["ListNpc"];
 
 		buttons[Buttons::BT_MIN] = std::make_unique<MapleButton>(MiniMap["BtMin"], Point<int16_t>(195, -6));
 		buttons[Buttons::BT_MAX] = std::make_unique<MapleButton>(MiniMap["BtMax"], Point<int16_t>(209, -6));
@@ -58,7 +59,7 @@ namespace ms
 		combined_text = Text(Text::Font::A12M, Text::Alignment::LEFT, Color::Name::WHITE);
 
 		marker = Setting<MiniMapDefaultHelpers>::get().load()
-				 ? nl::nx::ui["UIWindow2.img"]["MiniMapSimpleMode"]["DefaultHelper"]
+				 ? v83ui::window("MiniMapSimpleMode")["DefaultHelper"]
 				 : nl::nx::mapLatest["MapHelper.img"]["minimap"];
 
 		player_marker = Animation(marker["user"]);

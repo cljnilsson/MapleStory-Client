@@ -18,6 +18,7 @@
 #include "UICharSelect.h"
 #include "UILoginNotice.h"
 #include "UIRaceSelect.h"
+#include "UIExplorerCreation.h"
 #include "UISoftKey.h"
 #include "UIWorldSelect.h"
 
@@ -56,12 +57,12 @@ namespace ms
 		version = Text(Text::Font::A11M, Text::Alignment::LEFT, Color::Name::LEMONGRASS, "Ver. " + version_text);
 
 		pagepos = Point<int16_t>(247, 462);
-		worldpos = Point<int16_t>(586, 46);
-		charinfopos = Point<int16_t>(671, 339);
+		worldpos = Point<int16_t>(8, 90);
+		charinfopos = Point<int16_t>(150, 125);
 
-		Point<int16_t> character_sel_pos = Point<int16_t>(601, 393);
-		Point<int16_t> character_new_pos = Point<int16_t>(200, 495);
-		Point<int16_t> character_del_pos = Point<int16_t>(316, 495);
+		Point<int16_t> character_sel_pos = Point<int16_t>(521, 154);
+		Point<int16_t> character_new_pos = Point<int16_t>(521, 192);
+		Point<int16_t> character_del_pos = Point<int16_t>(521, 240);
 
 		selected_character = Setting<DefaultCharacter>::get().load();
 		selected_page = selected_character / PAGESIZE;
@@ -106,18 +107,29 @@ namespace ms
 		world_sprites.emplace_back(selectedWorld["name"][world], worldpos - Point<int16_t>(8, 1));
 		world_sprites.emplace_back(selectedWorld["ch"][channel_id], worldpos - Point<int16_t>(0, 1));
 
-		nl::node map = nl::nx::map001["Back"]["login.img"];
-		nl::node ani = map["ani"];
+		nl::node backs = nl::nx::map["Back"]["login.img"]["back"];
+        nl::node charObj = nl::nx::map["Obj"]["login.img"]["CharSelect"];
 
-		sprites.emplace_back(map["back"]["13"], Point<int16_t>(392, 297));
-		sprites.emplace_back(ani["17"], Point<int16_t>(151, 283));
-		sprites.emplace_back(ani["18"], Point<int16_t>(365, 252));
-		sprites.emplace_back(ani["19"], Point<int16_t>(191, 208));
-		sprites.emplace_back(Common["frame"], Point<int16_t>(400, 300));
-		sprites.emplace_back(Common["step"]["2"], Point<int16_t>(40, 0));
+        if (backs["1"])
+            sprites.emplace_back(backs["1"], Point<int16_t>(400, 300));
+        if (backs["10"])
+            sprites.emplace_back(backs["10"], Point<int16_t>(77, 32));
+        if (backs["15"])
+            sprites.emplace_back(backs["15"], Point<int16_t>(143, 81));
+        if (backs["13"])
+            sprites.emplace_back(backs["13"], Point<int16_t>(141, 695));
+        if (charObj["signboard"]["0"])
+            sprites.emplace_back(charObj["signboard"]["0"], Point<int16_t>(571, 257));
+        if (backs["14"])
+            sprites.emplace_back(backs["14"], Point<int16_t>(315, 393));
 
-		burning_notice = Common["Burning"]["BurningNotice"];
-		burning_count = Text(Text::Font::A12B, Text::Alignment::LEFT, Color::Name::WHITE, "1");
+        sprites.emplace_back(Common["frame"], Point<int16_t>(400, 300));
+
+        if (Common["step"]["2"])
+            sprites.emplace_back(Common["step"]["2"], Point<int16_t>(40, -6));
+
+        burning_notice = Common["Burning"]["BurningNotice"];
+        burning_count = Text(Text::Font::A12B, Text::Alignment::LEFT, Color::Name::WHITE, "1");
 
 		charinfo = CharSelect["charInfo"];
 		charslot = CharSelect["charSlot"]["0"];
@@ -657,7 +669,14 @@ namespace ms
 				tab_move = false;
 				tab_move_pos = 0;
 
-				UI::get().emplace<UIRaceSelect>();
+				// Keep race selection for character naming callbacks,
+                // but bypass its missing v83 graphics.
+                UI::get().emplace<UIRaceSelect>();
+
+                if (auto raceselect = UI::get().get_element<UIRaceSelect>())
+                    raceselect->deactivate();
+
+                UI::get().emplace<UIExplorerCreation>();
 				break;
 			case Buttons::CHARACTER_DELETE:
 			{
@@ -807,7 +826,7 @@ namespace ms
 
 		bool character_found = false;
 
-		for (uint8_t i = PAGESIZE - 1; i >= 0; i--)
+		for (int i = static_cast<int>(PAGESIZE) - 1; i >= 0; --i)
 		{
 			uint8_t index = i + selected_page * PAGESIZE;
 
@@ -841,7 +860,7 @@ namespace ms
 
 	void UICharSelect::select_last_slot()
 	{
-		for (uint8_t i = PAGESIZE - 1; i >= 0; i--)
+		for (int i = static_cast<int>(PAGESIZE) - 1; i >= 0; --i)
 		{
 			uint8_t index = i + selected_page * PAGESIZE;
 

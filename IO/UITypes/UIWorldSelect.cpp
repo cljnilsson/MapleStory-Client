@@ -60,8 +60,8 @@ namespace ms
 		nl::node obj = nl::nx::map["Obj"]["login.img"];
 		nl::node login = nl::nx::ui["Login.img"];
 		worldselect = login["WorldSelect"];
-		worldsrc = worldselect["BtWorld"]["release"];
-		channelsrc = worldselect["BtChannel"];
+		worldsrc = worldselect["BtWorld"];
+		channelsrc = worldselect["channel"];
 		nl::node common = login["Common"];
 
 		set_region(regionid);
@@ -72,7 +72,27 @@ namespace ms
             background_pos
         );
 
+        // v83 NeoCity decoration: character art, logo and effects.
+        nl::node neo = obj["WorldSelect"]["neoCity"];
+
+        if (neo["2"])
+            sprites.emplace_back(neo["2"], Point<int16_t>(655, 470));
+        if (neo["1"])
+            sprites.emplace_back(neo["1"], Point<int16_t>(703, 492));
+        if (neo["3"])
+            sprites.emplace_back(neo["3"], Point<int16_t>(90, 555));
+        if (neo["4"])
+            sprites.emplace_back(neo["4"], Point<int16_t>(200, 480));
+        if (neo["5"])
+            sprites.emplace_back(neo["5"], Point<int16_t>(310, 505));
+
         sprites.emplace_back(common["frame"], Point<int16_t>(400, 300));
+        
+
+        sprites.emplace_back(
+            obj["WorldSelect"]["signboard"]["0"]["0"],
+            Point<int16_t>(400, 80)
+        );
 		sprites.emplace_back(common["step"]["1"], Point<int16_t>(40, 0));
 
 		buttons[Buttons::BT_VIEWALL] = std::make_unique<MapleButton>(worldselect["BtViewAll"], Point<int16_t>(0, 53));
@@ -102,22 +122,39 @@ namespace ms
 																		  Point<int16_t>(3, 127));
 		buttons[Buttons::BT_QUITGAME] = std::make_unique<MapleButton>(common["BtExit"], Point<int16_t>(0, 515));
 
-		for (size_t i = 0; i < Buttons::BT_ENTERWORLD - Buttons::BT_CHANNEL0; i++)
-		{
-			std::string ch = std::to_string(i);
+		// v83 channel buttons: 4 columns.
+        for (size_t i = 0; i < 20; ++i)
+        {
+            nl::node ch = channelsrc[std::to_string(i)];
 
-			buttons[Buttons::BT_CHANNEL0 + i] = std::make_unique<TwoSpriteButton>(
-					channelsrc["button:" + ch]["normal"]["0"], channelsrc["button:" + ch]["keyFocused"]["0"],
-					channelsrc_pos);
-			buttons[Buttons::BT_CHANNEL0 + i]->set_active(false);
-		}
+            if (!ch)
+                continue;
 
-		channels_background = channelsrc["layer:bg"];
+            Point<int16_t> pos(
+                198 + static_cast<int16_t>((i % 4) * 106),
+                305 + static_cast<int16_t>((i / 4) * 35)
+            );
 
-		buttons[Buttons::BT_ENTERWORLD] = std::make_unique<MapleButton>(channelsrc["button:GoWorld"], channelsrc_pos);
-		buttons[Buttons::BT_ENTERWORLD]->set_active(false);
+            buttons[Buttons::BT_CHANNEL0 + i] =
+                std::make_unique<TwoSpriteButton>(
+                    ch["normal"], ch["disabled"], pos);
 
-		chatballoon.change_text("Please select the World you would like to play in.");
+            buttons[Buttons::BT_CHANNEL0 + i]->set_active(false);
+        }
+
+        channelsrc_pos = Point<int16_t>(143, 100);
+
+        // Fully opened v83 parchment.
+        channels_background = worldselect["scroll"]["0"]["3"];
+
+        buttons[Buttons::BT_ENTERWORLD] =
+            std::make_unique<MapleButton>(
+                worldselect["BtGoworld"],
+                Point<int16_t>(504, 444));
+
+        buttons[Buttons::BT_ENTERWORLD]->set_active(false);
+
+        chatballoon.change_text("Please select the World you would like to play in.");
 
 		if (Configuration::get().get_auto_login())
 		{
@@ -138,6 +175,10 @@ namespace ms
 	void UIWorldSelect::draw(float alpha) const
 	{
 		UIElement::draw_sprites(alpha);
+        if (!world_selected)
+            Texture(worldselect["scroll"]["0"]["0"]).draw(
+                position + Point<int16_t>(143, 100));
+
 
 		worlds_background.draw(position + worldsrc_pos);
 
@@ -151,14 +192,40 @@ namespace ms
 		if (world_selected)
 		{
 			channels_background.draw(position + channelsrc_pos);
-			world_textures[worldid].draw(position + channelsrc_pos);
+
+            // v83 selected-world decoration.
+            Texture divider(worldselect["chBackgrn"]);
+            if (divider.is_valid())
+                divider.draw(
+                    position + channelsrc_pos
+                    + Point<int16_t>(37, 136)
+                    + divider.get_origin()
+                );
+
+            Texture world_title(
+                worldselect["world"][std::to_string(worldid)]
+            );
+
+            if (world_title.is_valid())
+            {
+                int16_t x = static_cast<int16_t>(
+                    37 + (449 - world_title.width()) / 2
+                );
+
+                world_title.draw(
+                    position + channelsrc_pos
+                    + Point<int16_t>(x, 135)
+                );
+            }
+
+			// v83 world title will be added separately.
 		}
 
 		UIElement::draw_buttons(alpha);
 
 		version.draw(position + Point<int16_t>(707, 1));
 
-		if (draw_chatballoon)
+		if (draw_chatballoon && !world_selected)
 			chatballoon.draw(position + Point<int16_t>(503, 255));
 	}
 
@@ -174,7 +241,7 @@ namespace ms
 				position + worldsrc_pos + worlds_background.get_dimensions()
 		);
 
-		if (world_selected && !channels_bounds.contains(cursorpos) && !worlds_bounds.contains(cursorpos))
+		if (false && world_selected && !channels_bounds.contains(cursorpos) && !worlds_bounds.contains(cursorpos))
 		{
 			if (clicked)
 			{
@@ -351,23 +418,10 @@ namespace ms
 						return UI::get().send_key(keycode, pressed);
 					} else
 					{
-						bool found = false;
-
-						for (size_t i = Buttons::BT_WORLD0; i < Buttons::BT_CHANNEL0; i++)
-						{
-							auto state = buttons[Buttons::BT_WORLD0 + i]->get_state();
-
-							if (state == Button::State::PRESSED)
-							{
-								found = true;
-								break;
-							}
-						}
-
-						if (found)
-							button_pressed(selected_world + Buttons::BT_WORLD0);
-						else
-							buttons[Buttons::BT_WORLD0 + selected_world]->set_state(Button::State::PRESSED);
+						// Select the first world using the normal button handler.
+                        // Avoid indexing nonexistent world buttons.
+                        if (!worlds.empty())
+                            button_pressed(Buttons::BT_WORLD0 + worlds.front().wid);
 					}
 				}
 			}
@@ -380,21 +434,37 @@ namespace ms
 	}
 
 	void UIWorldSelect::draw_world()
-	{
-		if (worldcount <= 0)
-			return; // TODO: Send the user back to the login screen? Otherwise, I think the screen will be blank with no worlds, or throw a UILoginNotice up with failed to communite to server?
+    {
+        if (worldcount == 0)
+            return;
 
-		for (auto world : worlds)
-		{
-			if (world.channelcount < 2)
-				return; // I remove the world if there is only one channel because the graphic for the channel selection is defaulted to at least 2
+        size_t index = 0;
 
-			buttons[Buttons::BT_WORLD0 + world.wid]->set_active(true);
+        for (const auto &world : worlds)
+        {
+            if (world.channelcount == 0 || world.wid >= 5)
+                continue;
 
-			if (channelid >= world.channelcount)
-				channelid = 0;
-		}
-	}
+            nl::node art = worldsrc[std::to_string(world.wid)];
+
+            if (art)
+            {
+                Point<int16_t> pos(
+                    182 + static_cast<int16_t>(index * 27),
+                    158
+                );
+
+                buttons[Buttons::BT_WORLD0 + world.wid] =
+                    std::make_unique<MapleButton>(art, pos);
+
+                buttons[Buttons::BT_WORLD0 + world.wid]->set_active(true);
+                ++index;
+            }
+
+            if (channelid >= world.channelcount)
+                channelid = 0;
+        }
+    }
 
 	void UIWorldSelect::add_world(World world)
 	{
@@ -442,34 +512,14 @@ namespace ms
 	}
 
 	void UIWorldSelect::set_region(uint8_t regionid)
-	{
-		world_map[Buttons::BT_WORLD0] = regionid == 5 ? Worlds::SCANIA : Worlds::LUNA;
-		world_map[Buttons::BT_WORLD1] = Worlds::BERA;
-		world_map[Buttons::BT_WORLD2] = Worlds::AURORA;
-		world_map[Buttons::BT_WORLD3] = Worlds::ELYSIUM1;
-		world_map[Buttons::BT_WORLD4] = Worlds::REBOOT1;
+    {
+        // v83 uses world buttons supplied by the server,
+        // rather than the newer regional background layout.
+        (void)regionid;
 
-		nl::node region = worldsrc["index"][regionid];
-
-		worlds_background = region["layer:bg"];
-
-		worldsrc_pos = region["pos"];
-
-		for (size_t i = Buttons::BT_WORLD0; i <= Buttons::BT_WORLD4; i++)
-		{
-			std::string world = std::to_string(world_map[i]);
-			world_textures.emplace_back(channelsrc["release"]["layer:" + world]);
-			recommended_world_textures.emplace_back(worldselect["world"][world]);
-
-			nl::node worldbtn = worldsrc["button:" + world];
-
-			buttons[Buttons::BT_WORLD0 + i] = std::make_unique<TwoSpriteButton>(worldbtn["normal"]["0"],
-																				worldbtn["keyFocused"]["0"],
-																				worldsrc_pos + Point<int16_t>(
-																						region["origin"][i + 1]));
-			buttons[Buttons::BT_WORLD0 + i]->set_active(false);
-		}
-	}
+        for (uint16_t i = 0; i < 5; ++i)
+            world_map[Buttons::BT_WORLD0 + i] = i;
+    }
 
 	uint16_t UIWorldSelect::get_worldbyid(uint16_t worldid)
 	{

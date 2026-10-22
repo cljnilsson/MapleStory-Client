@@ -15,6 +15,7 @@
 //	You should have received a copy of the GNU Affero General Public License	//
 //	along with this program.  If not, see <https://www.gnu.org/licenses/>.		//
 //////////////////////////////////////////////////////////////////////////////////
+#include "V83UIWindowCompat.h"
 #include "UIChat.h"
 
 #include "../UI.h"
@@ -29,7 +30,7 @@ namespace ms
 	{
 		show_weekly = Configuration::get().get_show_weekly();
 
-		nl::node socialChatEnter = nl::nx::ui["UIWindow2.img"]["socialChatEnter"];
+		nl::node socialChatEnter = v83ui::window("socialChatEnter");
 
 		nl::node backgrnd = socialChatEnter["backgrnd"];
 		nl::node backgrnd4 = socialChatEnter["backgrnd4"];
@@ -118,7 +119,7 @@ namespace ms
 	{
 		Configuration::get().set_show_weekly(false);
 
-		nl::node socialRank = nl::nx::ui["UIWindow2.img"]["socialRank"];
+		nl::node socialRank = v83ui::window("socialRank");
 
 		nl::node backgrnd = socialRank["backgrnd"];
 		nl::node backgrnd4 = socialRank["backgrnd4"];

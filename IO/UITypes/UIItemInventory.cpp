@@ -15,6 +15,7 @@
 //	You should have received a copy of the GNU Affero General Public License	//
 //	along with this program.  If not, see <https://www.gnu.org/licenses/>.		//
 //////////////////////////////////////////////////////////////////////////////////
+#include "V83UIWindowCompat.h"
 #include "UIItemInventory.h"
 
 #include "UINotice.h"
@@ -37,7 +38,7 @@ namespace ms
 			: UIDragElement<PosINV>(), inventory(invent), ignore_tooltip(false), tab(InventoryType::Id::EQUIP),
 			  sort_enabled(false)
 	{
-		nl::node Item = nl::nx::ui["UIWindow2.img"]["Item"];
+		nl::node Item = v83ui::window("Item");
 
 		// TODO: Change these to production
 		backgrnd = Item["backgrnd"];

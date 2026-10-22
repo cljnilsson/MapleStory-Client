@@ -379,6 +379,21 @@ namespace ms
 
 	void UIStatusBar::draw(float alpha) const
 	{
+        // v83 status bar background fallback
+        static const Texture v83_bar(
+            nl::nx::ui["StatusBar.img"]["base"]["backgrnd"]
+        );
+
+        if (v83_bar.is_valid())
+        {
+            v83_bar.draw(
+                Point<int16_t>(
+                    0,
+                    static_cast<int16_t>(VHEIGHT - 71)
+                ) + v83_bar.get_origin()
+            );
+        }
+
 		UIElement::draw_sprites(alpha);
 
 		for (size_t i = 0; i <= Buttons::BT_EVENT; i++)

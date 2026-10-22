@@ -15,6 +15,7 @@
 //	You should have received a copy of the GNU Affero General Public License	//
 //	along with this program.  If not, see <https://www.gnu.org/licenses/>.		//
 //////////////////////////////////////////////////////////////////////////////////
+#include "V83UIWindowCompat.h"
 #include "UIUserList.h"
 
 #include "../IO/Components/MapleButton.h"
@@ -27,7 +28,7 @@ namespace ms
 	UIUserList::UIUserList(uint16_t t) : UIDragElement<PosUSERLIST>(Point<int16_t>(260, 20)), tab(t)
 	{
 		nl::node close = nl::nx::ui["Basic.img"]["BtClose3"];
-		UserList = nl::nx::ui["UIWindow2.img"]["UserList"];
+		UserList = v83ui::window("UserList");
 		nl::node Main = UserList["Main"];
 
 		sprites.emplace_back(Main["backgrnd"]);

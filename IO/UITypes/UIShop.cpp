@@ -15,6 +15,7 @@
 //	You should have received a copy of the GNU Affero General Public License	//
 //	along with this program.  If not, see <https://www.gnu.org/licenses/>.		//
 //////////////////////////////////////////////////////////////////////////////////
+#include "V83UIWindowCompat.h"
 #include "UIShop.h"
 #include "UINotice.h"
 
@@ -35,7 +36,7 @@ namespace ms
 	UIShop::UIShop(const CharLook &in_charlook, const Inventory &in_inventory)
 			: UIDragElement<PosSHOP>(), charlook(in_charlook), inventory(in_inventory)
 	{
-		nl::node src = nl::nx::ui["UIWindow2.img"]["Shop2"];
+		nl::node src = v83ui::window("Shop2");
 
 		nl::node background = src["backgrnd"];
 		Texture bg = background;

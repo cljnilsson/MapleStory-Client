@@ -48,8 +48,8 @@ namespace ms
 		nl::node Login = nl::nx::ui["Login.img"];
 		nl::node Common = Login["Common"];
 		nl::node CustomizeChar = Login["CustomizeChar"]["000"];
-		nl::node back = nl::nx::map001["Back"]["login.img"]["back"];
-		nl::node signboard = nl::nx::mapLatest["Obj"]["login.img"]["NewChar"]["signboard"];
+		nl::node back = nl::nx::map["Back"]["login.img"]["back"];
+		nl::node signboard = nl::nx::map["Obj"]["login.img"]["NewChar"]["signboard"];
 		nl::node board = CustomizeChar["board"];
 		nl::node genderSelect = CustomizeChar["genderSelect"];
 
@@ -227,7 +227,7 @@ namespace ms
 	void UIExplorerCreation::draw(float inter) const
 	{
 		for (size_t i = 0; i < 2; i++)
-			for (size_t k = 0; k < 800; k += sky.width())
+			for (size_t k = 0; sky.is_valid() && sky.width() > 0 && k < 800; k += sky.width())
 				sky.draw(Point<int16_t>(k, (400 * i) - 100));
 
 		int16_t cloudx = static_cast<int16_t>(cloudfx) % 800;
@@ -297,7 +297,84 @@ namespace ms
 			}
 		}
 
-		version.draw(position + Point<int16_t>(707, 1));
+		        // fallback helper overlay for missing creator UI assets
+        Text helper_title(Text::Font::A11M, Text::Alignment::LEFT, Color::Name::BLACK, "Character creation");
+        helper_title.draw(Point<int16_t>(470, 110));
+
+        if (!gender)
+        {
+            Text stage(Text::Font::A11M, Text::Alignment::LEFT, Color::Name::BLACK, "Stage 1: choose gender");
+            Text hint(Text::Font::A11M, Text::Alignment::LEFT, Color::Name::BLACK, "Click Male/Female, then press Enter");
+            Text current(Text::Font::A11M, Text::Alignment::LEFT, Color::Name::BLACK, std::string("Current: ") + (female ? "Female" : "Male"));
+            Text male_label(Text::Font::A11M, Text::Alignment::LEFT, Color::Name::BLACK, "Male");
+            Text female_label(Text::Font::A11M, Text::Alignment::LEFT, Color::Name::BLACK, "Female");
+            Text ok_label(Text::Font::A11M, Text::Alignment::LEFT, Color::Name::BLACK, "OK");
+            Text back_label(Text::Font::A11M, Text::Alignment::LEFT, Color::Name::BLACK, "Back");
+
+            stage.draw(Point<int16_t>(470, 135));
+            hint.draw(Point<int16_t>(470, 153));
+            current.draw(Point<int16_t>(470, 171));
+            male_label.draw(Point<int16_t>(505, 112));
+            female_label.draw(Point<int16_t>(580, 112));
+            ok_label.draw(Point<int16_t>(530, 398));
+            back_label.draw(Point<int16_t>(18, 560));
+        }
+        else if (!charSet)
+        {
+            Text stage(Text::Font::A11M, Text::Alignment::LEFT, Color::Name::BLACK, "Stage 2: customize look");
+            Text hint(Text::Font::A11M, Text::Alignment::LEFT, Color::Name::BLACK, "Use the invisible arrows if wanted, or press Enter to continue");
+            Text face_label(Text::Font::A11M, Text::Alignment::LEFT, Color::Name::BLACK, "Face");
+            Text hair_label(Text::Font::A11M, Text::Alignment::LEFT, Color::Name::BLACK, "Hair");
+            Text skin_label(Text::Font::A11M, Text::Alignment::LEFT, Color::Name::BLACK, "Skin");
+            Text top_label(Text::Font::A11M, Text::Alignment::LEFT, Color::Name::BLACK, "Top");
+            Text shoes_label(Text::Font::A11M, Text::Alignment::LEFT, Color::Name::BLACK, "Shoes");
+            Text wep_label(Text::Font::A11M, Text::Alignment::LEFT, Color::Name::BLACK, "Weapon");
+            Text ok_label(Text::Font::A11M, Text::Alignment::LEFT, Color::Name::BLACK, "OK");
+            Text cancel_label(Text::Font::A11M, Text::Alignment::LEFT, Color::Name::BLACK, "Cancel");
+
+            stage.draw(Point<int16_t>(470, 110));
+            hint.draw(Point<int16_t>(470, 128));
+
+            face_label.draw(Point<int16_t>(470, 193 + (0 * 18)));
+            hair_label.draw(Point<int16_t>(470, 193 + (1 * 18)));
+            skin_label.draw(Point<int16_t>(470, 193 + (3 * 18)));
+            top_label.draw(Point<int16_t>(470, 193 + (4 * 18)));
+            shoes_label.draw(Point<int16_t>(470, 193 + (5 * 18)));
+            wep_label.draw(Point<int16_t>(470, 193 + (6 * 18)));
+
+            ok_label.draw(Point<int16_t>(530, 430));
+            cancel_label.draw(Point<int16_t>(600, 430));
+        }
+        else if (!named)
+        {
+            Text stage(Text::Font::A11M, Text::Alignment::LEFT, Color::Name::BLACK, "Stage 3: enter a name");
+            Text hint(Text::Font::A11M, Text::Alignment::LEFT, Color::Name::BLACK, "Type at least 4 letters, then press Enter");
+            Text name_label(Text::Font::A11M, Text::Alignment::LEFT, Color::Name::BLACK, "Name:");
+            Text ok_label(Text::Font::A11M, Text::Alignment::LEFT, Color::Name::BLACK, "OK");
+            Text cancel_label(Text::Font::A11M, Text::Alignment::LEFT, Color::Name::BLACK, "Cancel");
+
+            stage.draw(Point<int16_t>(470, 110));
+            hint.draw(Point<int16_t>(470, 128));
+            name_label.draw(Point<int16_t>(490, 208));
+            ok_label.draw(Point<int16_t>(520, 278));
+            cancel_label.draw(Point<int16_t>(590, 278));
+        }
+        else
+        {
+            Text stage(Text::Font::A11M, Text::Alignment::LEFT, Color::Name::BLACK, "Character created. Continue with keyboard selection.");
+            stage.draw(Point<int16_t>(470, 110));
+        }
+
+		
+        // crude fallback visuals: always draw some creator art
+        // when the old client UI assets do not match.
+        if (!gender || charSet)
+        {
+            for (const auto &sprite : sprites_lookboard)
+                sprite.draw(position, inter);
+        }
+
+        version.draw(position + Point<int16_t>(707, 1));
 	}
 
 	void UIExplorerCreation::update()

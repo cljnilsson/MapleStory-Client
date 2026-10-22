@@ -15,6 +15,7 @@
 //	You should have received a copy of the GNU Affero General Public License	//
 //	along with this program.  If not, see <https://www.gnu.org/licenses/>.		//
 //////////////////////////////////////////////////////////////////////////////////
+#include "V83UIWindowCompat.h"
 #include "UIWorldMap.h"
 
 #include "../UI.h"
@@ -31,7 +32,7 @@ namespace ms
 	UIWorldMap::UIWorldMap() : UIDragElement<PosMAP>()
 	{
 		nl::node close = nl::nx::ui["Basic.img"]["BtClose3"];
-		nl::node WorldMap = nl::nx::ui["UIWindow2.img"]["WorldMap"];
+		nl::node WorldMap = v83ui::window("WorldMap");
 		nl::node WorldMapSearch = WorldMap["WorldMapSearch"];
 		nl::node Border = WorldMap["Border"]["0"];
 		nl::node backgrnd = WorldMapSearch["backgrnd"];

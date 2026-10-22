@@ -15,6 +15,7 @@
 //	You should have received a copy of the GNU Affero General Public License	//
 //	along with this program.  If not, see <https://www.gnu.org/licenses/>.		//
 //////////////////////////////////////////////////////////////////////////////////
+#include "V83UIWindowCompat.h"
 #include "UIEvent.h"
 
 #include "../UI.h"
@@ -31,7 +32,7 @@ namespace ms
 		offset = 0;
 		event_count = 16;
 
-		nl::node main = nl::nx::ui["UIWindow2.img"]["EventList"]["main"];
+		nl::node main = v83ui::window("EventList")["main"];
 		nl::node close = nl::nx::ui["Basic.img"]["BtClose3"];
 
 		nl::node backgrnd = main["backgrnd"];

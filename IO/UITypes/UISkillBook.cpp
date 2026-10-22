@@ -15,6 +15,7 @@
 //	You should have received a copy of the GNU Affero General Public License	//
 //	along with this program.  If not, see <https://www.gnu.org/licenses/>.		//
 //////////////////////////////////////////////////////////////////////////////////
+#include "V83UIWindowCompat.h"
 #include "UISkillBook.h"
 
 #include "../UI.h"
@@ -103,7 +104,7 @@ namespace ms
 			: UIDragElement<PosSKILL>(), stats(in_stats), skillbook(in_skillbook), grabbing(false), tab(0),
 			  macro_enabled(false), sp_enabled(false)
 	{
-		nl::node Skill = nl::nx::ui["UIWindow2.img"]["Skill"];
+		nl::node Skill = v83ui::window("Skill");
 		nl::node main = Skill["main"];
 		nl::node ui_backgrnd = main["backgrnd"];
 

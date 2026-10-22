@@ -15,6 +15,7 @@
 //	You should have received a copy of the GNU Affero General Public License	//
 //	along with this program.  If not, see <https://www.gnu.org/licenses/>.		//
 //////////////////////////////////////////////////////////////////////////////////
+#include "V83UIWindowCompat.h"
 #include "UIChannel.h"
 
 #include "../KeyAction.h"
@@ -34,7 +35,7 @@ namespace ms
 		selected_channel = current_channel;
 		channel_count = 20; // TODO: Need to get total number of channels on world
 
-		nl::node Channel = nl::nx::ui["UIWindow2.img"]["Channel"];
+		nl::node Channel = v83ui::window("Channel");
 
 		nl::node backgrnd = Channel["backgrnd"];
 		Texture bg = backgrnd;

@@ -231,7 +231,29 @@ namespace ms
 				std::cout << "Received Packet: " << std::to_string(opcode) << std::endl;
 		}
 
-		if (opcode < NUM_HANDLERS)
+		if (opcode == 9)
+        {
+            std::cout << "[PACKET 9 DEBUG] Length: " << length
+                      << " bytes, data:";
+
+            size_t count = length < 24 ? length : 24;
+
+            for (size_t i = 0; i < count; ++i)
+            {
+                unsigned int value =
+                    static_cast<unsigned char>(bytes[i]);
+
+                const char* digits = "0123456789ABCDEF";
+
+                std::cout << " "
+                          << digits[(value >> 4) & 15]
+                          << digits[value & 15];
+            }
+
+            std::cout << std::endl;
+        }
+
+        if (opcode < NUM_HANDLERS)
 		{
 			if (auto& handler = handlers[opcode])
 			{

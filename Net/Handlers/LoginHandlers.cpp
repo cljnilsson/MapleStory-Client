@@ -1,3 +1,4 @@
+#include <iostream>
 //////////////////////////////////////////////////////////////////////////////////
 //	This file is part of the continued Journey MMORPG client					//
 //	Copyright (C) 2015-2019  Daniel Allendorf, Ryan Payton						//
@@ -24,6 +25,9 @@
 #include "../../IO/UI.h"
 
 #include "../../IO/UITypes/UICharSelect.h"
+#include "../../IO/UITypes/UIExplorerCreation.h"
+#include "../../IO/UITypes/UICygnusCreation.h"
+#include "../../IO/UITypes/UIAranCreation.h"
 #include "../../IO/UITypes/UIGender.h"
 #include "../../IO/UITypes/UILoginNotice.h"
 #include "../../IO/UITypes/UILoginWait.h"
@@ -152,6 +156,11 @@ namespace ms
 	void CharlistHandler::handle(InPacket& recv) const
 	{
 		auto loginwait = UI::get().get_element<UILoginWait>();
+        std::cerr << "[CHARLIST DEBUG] Handler reached, wait exists: "
+                  << static_cast<bool>(loginwait)
+                  << ", active: "
+                  << (loginwait && loginwait->is_active())
+                  << std::endl;
 
 		if (loginwait && loginwait->is_active())
 		{
@@ -160,6 +169,8 @@ namespace ms
 			// Parse all characters
 			std::vector<CharEntry> characters;
 			int8_t charcount = recv.read_byte();
+            std::cerr << "[CHARLIST DEBUG] Character count: "
+                      << static_cast<int>(charcount) << std::endl;
 
 			for (uint8_t i = 0; i < charcount; ++i)
 				characters.emplace_back(LoginParser::parse_charentry(recv));
@@ -176,7 +187,9 @@ namespace ms
 				worldselect->remove_selected();
 
 			// Add the character selection screen
-			UI::get().emplace<UICharSelect>(characters, charcount, slots, pic);
+			std::cerr << "[CHARLIST DEBUG] Creating character selection" << std::endl;
+            UI::get().emplace<UICharSelect>(characters, charcount, slots, pic);
+            std::cerr << "[CHARLIST DEBUG] Character selection created" << std::endl;
 		}
 	}
 
@@ -196,9 +209,29 @@ namespace ms
 		std::string name = recv.read_string();
 		bool used = recv.read_bool();
 
-		// Notify the character creation screen
-		if (auto raceselect = UI::get().get_element<UIRaceSelect>())
+		std::cerr << "[NAME DEBUG] name="" << name << "", used=" << used << std::endl;
+
+		// Notify whichever creation UI is currently active.
+		if (auto explorercreation = UI::get().get_element<UIExplorerCreation>())
+		{
+			explorercreation->send_naming_result(used);
+		}
+		else if (auto cygnuscreation = UI::get().get_element<UICygnusCreation>())
+		{
+			cygnuscreation->send_naming_result(used);
+		}
+		else if (auto arancreation = UI::get().get_element<UIAranCreation>())
+		{
+			arancreation->send_naming_result(used);
+		}
+		else if (auto raceselect = UI::get().get_element<UIRaceSelect>())
+		{
 			raceselect->send_naming_result(used);
+		}
+		else
+		{
+			std::cerr << "[NAME DEBUG] No creation UI found for naming response." << std::endl;
+		}
 	}
 
 	void AddNewCharEntryHandler::handle(InPacket& recv) const
@@ -210,7 +243,21 @@ namespace ms
 
 		// Read the updated character selection
 		if (auto charselect = UI::get().get_element<UICharSelect>())
-			charselect->add_character(std::move(character));
+			{
+            charselect->add_character(std::move(character));
+
+            // Return to character selection after the server confirms creation.
+            UI::get().remove(UIElement::Type::SOFTKEYBOARD);
+            UI::get().remove(UIElement::Type::LOGINNOTICE_CONFIRM);
+            UI::get().remove(UIElement::Type::LOGINNOTICE);
+            UI::get().remove(UIElement::Type::CLASSCREATION);
+            UI::get().remove(UIElement::Type::RACESELECT);
+
+            charselect->post_add_character();
+
+            std::cerr << "[CREATE DEBUG] Returned to character selection."
+                      << std::endl;
+        }
 	}
 
 	void DeleteCharResponseHandler::handle(InPacket& recv) const
