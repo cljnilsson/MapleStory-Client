@@ -14,6 +14,7 @@ Commands:
     python ms_headless.py type --stdin          # safer for credentials
     python ms_headless.py click 420 310
     python ms_headless.py gm '!example-command' # must already be in game; actual syntax depends on server
+    printf '%s' 'password' | python ms_headless.py play --username account --password-stdin
     python ms_headless.py mark                # record current log byte offset
     python ms_headless.py wait 'Received Packet: 12' --after-offset 0 --timeout 30
     python ms_headless.py stop
@@ -25,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import collections
+import getpass
 import json
 import os
 from pathlib import Path
@@ -41,6 +43,8 @@ STATE_PATH = STATE_DIR / "session.json"
 CLIENT_LOG = STATE_DIR / "client.log"
 X_LOG = STATE_DIR / "xvfb.log"
 AUTH = STATE_DIR / ".Xauthority"
+HEADLESS_STATE = re.compile(r"^HEADLESS_STATE (login|world_select|channel_select|character_select|in_game)(?: count=(\d+) pic=(\d+))?$")
+HEADLESS_ERROR = re.compile(r"^HEADLESS_ERROR login reason=(\d+)$")
 
 
 def die(message: str) -> None:
@@ -183,7 +187,7 @@ def cmd_start(args) -> None:
         print("No window appears on your desktop; OpenGL still runs on the virtual display.")
         print(f"Client log: {CLIENT_LOG}")
         print(f"X server log: {X_LOG}")
-        print("Commands: status | logs | key | type | click | gm | wait | stop")
+        print("Commands: status | logs | key | type | click | gm | play | wait | stop")
     finally:
         os.umask(old_umask)
 
@@ -321,6 +325,83 @@ def cmd_wait(args) -> None:
     die(f"Timed out waiting for {args.pattern!r} after {args.timeout}s")
 
 
+def read_screen_events(log) -> tuple[tuple[str, int | None, int | None] | None, str | None]:
+    """Consume new client-reported screen events, retaining the latest state."""
+    current = None
+    error = None
+    for raw in log.readlines():
+        line = raw.decode("utf-8", "replace").strip()
+        match = HEADLESS_STATE.fullmatch(line)
+        if match:
+            current = (match[1], int(match[2]) if match[2] else None,
+                       int(match[3]) if match[3] else None)
+        elif HEADLESS_ERROR.fullmatch(line):
+            error = line
+    return current, error
+
+
+def wait_for_screen(log, state: dict, deadline: float, previous: str | None = None):
+    while True:
+        screen, error = read_screen_events(log)
+        if error:
+            die(f"Login rejected ({error}). Inspect {CLIENT_LOG}")
+        if screen and screen[0] != previous:
+            return screen
+        if not client_alive(state):
+            die(f"HeavenClient exited. Inspect {CLIENT_LOG}")
+        if time.monotonic() >= deadline:
+            die(f"Timed out waiting for a screen change from {previous or 'startup'}; "
+                f"rebuild the client with HEADLESS_STATE support and inspect {CLIENT_LOG}")
+        time.sleep(0.05)
+
+
+def replace_login_field(state: dict, window: str, x: int, y: int, value: str) -> None:
+    run_xdotool(state, "mousemove", "--window", window, str(x), str(y))
+    run_xdotool(state, "click", "1")
+    # This client's Textfield does not implement Ctrl+A; its login fields are
+    # limited to 12 characters, so clear from the end with BackSpace instead.
+    press(state, "End")
+    for _ in range(12):
+        press(state, "BackSpace")
+    type_text(state, value)
+
+
+def cmd_play(args) -> None:
+    """Advance from the login screen to an active field using screen events."""
+    state = read_state()
+    if not CLIENT_LOG.exists():
+        die("Client log not available")
+    deadline = time.monotonic() + args.timeout
+    with CLIENT_LOG.open("rb") as log:
+        screen, _ = read_screen_events(log)
+        if not screen:
+            screen = wait_for_screen(log, state, deadline)
+        window = focus_game(state)
+        while screen[0] != "in_game":
+            name, count, pic = screen
+            if name == "login":
+                if args.password_stdin:
+                    password = sys.stdin.read().rstrip("\r\n")
+                elif sys.stdin.isatty():
+                    password = getpass.getpass("Password: ")
+                else:
+                    die("At login screen; pipe a password with --password-stdin")
+                if not password:
+                    die("Password from stdin is empty")
+                if args.username:
+                    replace_login_field(state, window, 500, 250, args.username)
+                replace_login_field(state, window, 500, 280, password)
+            elif name == "character_select":
+                if count == 0:
+                    die("No characters available; create one before using play")
+                if pic != 2:
+                    die(f"Character selection requires a PIC (mode {pic}); use the manual CLI controls")
+            press(state, "Return")
+            screen = wait_for_screen(log, state, deadline, previous=name)
+        print(json.dumps({"screen": "in_game", "client_running": True,
+                          "client_log": str(CLIENT_LOG)}))
+
+
 def graceful_stop(pid: int, identity: str | None, timeout: float = 3.0) -> None:
     if not alive(pid, identity):
         return
@@ -354,7 +435,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Offscreen CLI runner/controller for Linux HeavenClient")
     sub = parser.add_subparsers(dest="command", required=True)
     sp = sub.add_parser("start", help="Start virtual X display and HeavenClient")
-    sp.add_argument("--project", default="~/Desktop/Projects/MS/MapleStory-Client",
+    sp.add_argument("--project", default=str(Path(__file__).resolve().parent),
                     help="Path containing build/HeavenClient")
     sp.add_argument("--no-software-gl", action="store_true", help="Do not force Mesa software GL")
     sp.set_defaults(func=cmd_start)
@@ -387,6 +468,12 @@ def main() -> None:
     sp.add_argument("--timeout", type=float, default=20.0)
     sp.add_argument("--after-offset", type=int, default=0, help="Only match log output after this byte offset")
     sp.set_defaults(func=cmd_wait)
+    sp = sub.add_parser("play", aliases=["enter-game"],
+                        help="Enter the game from login using client screen events")
+    sp.add_argument("--username", help="Account name (omit when the client saved it)")
+    sp.add_argument("--password-stdin", action="store_true", help="Read password from stdin")
+    sp.add_argument("--timeout", type=float, default=90.0, help="Overall transition timeout in seconds")
+    sp.set_defaults(func=cmd_play)
     sp = sub.add_parser("stop", help="Stop client and virtual X server")
     sp.set_defaults(func=cmd_stop)
     args = parser.parse_args()
@@ -394,6 +481,8 @@ def main() -> None:
         die("--hold-ms must be nonnegative")
     if hasattr(args, "after_offset") and args.after_offset < 0:
         die("--after-offset must be nonnegative")
+    if args.command in ("play", "enter-game") and args.timeout <= 0:
+        die("--timeout must be positive")
     try:
         args.func(args)
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:

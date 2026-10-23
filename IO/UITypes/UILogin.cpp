@@ -34,6 +34,7 @@
 #endif
 
 #include <nlnx/nx.hpp>
+#include <iostream>
 
 namespace ms
 {
@@ -145,6 +146,8 @@ namespace ms
 					Configuration::get().get_auto_pass()
 					).dispatch();
 		}
+
+		std::cout << "HEADLESS_STATE login" << std::endl;
 	}
 
 	void UILogin::draw(float alpha) const

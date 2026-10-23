@@ -2,6 +2,29 @@
 
 HeavenClient is a custom, made-from-scratch game client for Maplestory v83.
 
+## Headless CLI login (Linux)
+
+After building `build/HeavenClient` and starting the game server, launch the
+offscreen client with `python ms_headless.py start`. The script uses the project
+directory containing `ms_headless.py` by default. It requires Xvfb, xauth, and
+xdotool; `python ms_headless.py stop` closes the session.
+
+To enter the game with the selected character:
+
+```sh
+python ms_headless.py play --username your-account
+```
+
+The command prompts for a password without echoing it. For scripted use, pipe
+the password to `play --password-stdin`. Omit `--username` if the client saved
+the account ID. `enter-game` is an alias for `play`. The command waits for
+client-reported screen transitions. It exits nonzero on rejection or timeout
+without using fixed login delays. It chooses
+the first available world and its first channel, then uses the currently
+selected character. Character creation, PIC prompts, and other notices still
+need manual controls. Rebuild the client after updating it, because an older
+binary does not emit the `HEADLESS_STATE` markers used by `play`.
+
 ## Supported versions
 
 - The client is currently compatible with version 83 servers.

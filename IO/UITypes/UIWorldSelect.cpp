@@ -32,6 +32,7 @@
 #include "../../Net/Packets/LoginPackets.h"
 
 #include <nlnx/nx.hpp>
+#include <iostream>
 
 namespace ms
 {
@@ -464,6 +465,8 @@ namespace ms
             if (channelid >= world.channelcount)
                 channelid = 0;
         }
+
+		std::cout << "HEADLESS_STATE world_select" << std::endl;
     }
 
 	void UIWorldSelect::add_world(World world)
@@ -496,6 +499,7 @@ namespace ms
 		}
 
 		buttons[Buttons::BT_ENTERWORLD]->set_active(true);
+		std::cout << "HEADLESS_STATE channel_select" << std::endl;
 	}
 
 	void UIWorldSelect::remove_selected()

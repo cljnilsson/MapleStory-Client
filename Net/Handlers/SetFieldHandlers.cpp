@@ -31,6 +31,7 @@
 #include "../../IO/Window.h"
 
 #include "../../IO/UITypes/UICharSelect.h"
+#include <iostream>
 
 namespace ms
 {
@@ -51,6 +52,7 @@ namespace ms
 				GraphicsGL::get().unlock();
 
 				Stage::get().transfer_player();
+				std::cout << "HEADLESS_STATE in_game" << std::endl;
 			});
 
 		GraphicsGL::get().lock();

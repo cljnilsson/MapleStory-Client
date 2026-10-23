@@ -54,6 +54,7 @@ namespace ms
 			// The packet should contain a 'reason' integer which can signify various things
 			if (int32_t reason = recv.read_int())
 			{
+				std::cout << "HEADLESS_ERROR login reason=" << reason << std::endl;
 				// Login unsuccessful
 				// The LoginNotice displayed will contain the specific information
 				switch (reason)
@@ -190,6 +191,9 @@ namespace ms
 			std::cerr << "[CHARLIST DEBUG] Creating character selection" << std::endl;
             UI::get().emplace<UICharSelect>(characters, charcount, slots, pic);
             std::cerr << "[CHARLIST DEBUG] Character selection created" << std::endl;
+			std::cout << "HEADLESS_STATE character_select count="
+			          << static_cast<int>(charcount) << " pic="
+			          << static_cast<int>(pic) << std::endl;
 		}
 	}
 
