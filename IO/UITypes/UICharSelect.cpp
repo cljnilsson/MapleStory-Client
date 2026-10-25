@@ -259,39 +259,49 @@ namespace ms
 				Point<int16_t> charpos = get_character_slot_pos(i, 278, 374);
 				DrawArgument chararg = DrawArgument(charpos, flip_character);
 
-				nametags[index].draw(charpos);
+				nametags[index].draw(charpos + Point<int16_t>(0, 34));
 
 				const StatsEntry &character_stats = characters[index].stats;
 
 				if (selectedslot)
-				{
-					selectedslot_effect[1].draw(charpos + Point<int16_t>(-5, 16), inter);
+                {
+                    // V83_SCENE_ALIGNMENT_V4: align light shaft and move text in its parchment.
+                    // V83_SCENE_ALIGNMENT_V3: original selection beam anchor.
+                    // Both effects hang from the same point above the feet.
+                    selectedslot_effect[1].draw(
+                        charpos + Point<int16_t>(-60, -295), inter);
 
-					int8_t lvy = -115;
-					Point<int16_t> pos_adj = Point<int16_t>(
-                        static_cast<int16_t>(charpos.x() + 2), 280);
-
-					static const Texture v83_info_scroll(
-                        nl::nx::ui["Login.img"]["CharSelect"]["scroll"]["0"]["3"]);
+                    // The stat sheet and all text share an origin tied to
+                    // the parchment, rather than separate character offsets.
                     Point<int16_t> scroll_pos(
-                        static_cast<int16_t>(charpos.x() - 108), charinfopos.y());
+                        static_cast<int16_t>(charpos.x() - 108),
+                        charinfopos.y());
+                    static const Texture v83_info_scroll(
+                        nl::nx::ui["Login.img"]["CharSelect"]["scroll"]["0"]["3"]);
                     if (v83_info_scroll.is_valid())
                         v83_info_scroll.draw(position + scroll_pos);
-                    // The sheet's WZ origin is 45,57, so compensate for it.
-                    charinfo.draw(position + scroll_pos + Point<int16_t>(62, 93));
 
-					std::string levelstr = std::to_string(character_stats.stats[MapleStat::Id::LEVEL]);
-					int16_t lvx = levelset.draw(levelstr, pos_adj + Point<int16_t>(12, lvy));
-					levelset.draw('l', pos_adj + Point<int16_t>(1 - lvx / 2, lvy));
+                    Point<int16_t> info_top_left =
+                        scroll_pos + Point<int16_t>(17, 36);
+                    // charInfo has an authored WZ origin of (45,57).
+                    charinfo.draw(position + info_top_left + Point<int16_t>(45, 57));
 
-					namelabel.draw(pos_adj + Point<int16_t>(8, -106));
+                    std::string levelstr = std::to_string(
+                        character_stats.stats[MapleStat::Id::LEVEL]);
+                    levelset.draw(levelstr,
+                        position + info_top_left + Point<int16_t>(70, 11));
+                    infolabels[InfoLabel::JOB].draw(
+                        position + info_top_left + Point<int16_t>(116, -8));
+                    infolabels[InfoLabel::STR].draw(
+                        position + info_top_left + Point<int16_t>(70, 30));
+                    infolabels[InfoLabel::INT].draw(
+                        position + info_top_left + Point<int16_t>(158, 30));
+                    infolabels[InfoLabel::DEX].draw(
+                        position + info_top_left + Point<int16_t>(70, 49));
+                    infolabels[InfoLabel::LUK].draw(
+                        position + info_top_left + Point<int16_t>(158, 49));
+                }
 
-					for (size_t i = 0; i < InfoLabel::NUM_LABELS; i++)
-					{
-						Point<int16_t> labelpos = pos_adj + get_infolabel_pos(i);
-						infolabels[i].draw(labelpos);
-					}
-				}
 
 				uint8_t j = 0;
 				uint16_t job = character_stats.stats[MapleStat::Id::JOB];
@@ -308,7 +318,8 @@ namespace ms
 				charlooks[index].draw(chararg, inter);
 
 				if (selectedslot)
-					selectedslot_effect[0].draw(charpos + Point<int16_t>(-5, -298), inter);
+					selectedslot_effect[0].draw(
+                        charpos + Point<int16_t>(-60, -295), inter);
 			} else if (i < slots)
 			{
 				Point<int16_t> emptyslotpos = get_character_slot_pos(i, 278, 374);

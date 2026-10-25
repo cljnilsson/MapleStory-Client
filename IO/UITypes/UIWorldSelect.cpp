@@ -71,19 +71,21 @@ namespace ms
         // V83_LOGIN_SCENES_V2: NeoCity backdrop is drawn before the other scene sprites.
 
 
+        // V83_SCENE_ALIGNMENT_V3: aligned mascot, eye and bottom-left logo.
+        // V83_SCENE_ALIGNMENT_V4: eye/logo position refinement.
         // v83 NeoCity decoration: character art, logo and effects.
         nl::node neo = obj["WorldSelect"]["neoCity"];
 
         if (neo["2"])
-            sprites.emplace_back(neo["2"], Point<int16_t>(655, 470));
+            sprites.emplace_back(neo["2"], Point<int16_t>(555, 350));
         if (neo["1"])
-            sprites.emplace_back(neo["1"], Point<int16_t>(703, 492));
+            sprites.emplace_back(neo["1"], Point<int16_t>(603, 372));
         if (neo["3"])
-            sprites.emplace_back(neo["3"], Point<int16_t>(90, 555));
+            sprites.emplace_back(neo["3"], Point<int16_t>(545, 336));
         if (neo["4"])
-            sprites.emplace_back(neo["4"], Point<int16_t>(200, 480));
+            sprites.emplace_back(neo["4"], Point<int16_t>(155, 460));
         if (neo["5"])
-            sprites.emplace_back(neo["5"], Point<int16_t>(310, 505));
+            sprites.emplace_back(neo["5"], Point<int16_t>(235, 405));
 
         sprites.emplace_back(common["frame"], Point<int16_t>(400, 300));
         // The rope hanger is drawn above the scroll in draw().
