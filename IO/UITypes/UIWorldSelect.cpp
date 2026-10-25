@@ -68,10 +68,8 @@ namespace ms
 		set_region(regionid);
 
 		// Original v83 world-selection background.
-        sprites.emplace_back(
-            obj["WorldSelect"]["neoCity"]["0"]["0"],
-            background_pos
-        );
+        // V83_LOGIN_SCENES_V2: NeoCity backdrop is drawn before the other scene sprites.
+
 
         // v83 NeoCity decoration: character art, logo and effects.
         nl::node neo = obj["WorldSelect"]["neoCity"];
@@ -88,13 +86,9 @@ namespace ms
             sprites.emplace_back(neo["5"], Point<int16_t>(310, 505));
 
         sprites.emplace_back(common["frame"], Point<int16_t>(400, 300));
-        
+        // The rope hanger is drawn above the scroll in draw().
+        // Step indicator is drawn above the parchment in draw().
 
-        sprites.emplace_back(
-            obj["WorldSelect"]["signboard"]["0"]["0"],
-            Point<int16_t>(400, 80)
-        );
-		sprites.emplace_back(common["step"]["1"], Point<int16_t>(40, 0));
 
 		buttons[Buttons::BT_VIEWALL] = std::make_unique<MapleButton>(worldselect["BtViewAll"], Point<int16_t>(0, 53));
 		buttons[Buttons::BT_VIEWRECOMMENDED] = std::make_unique<MapleButton>(worldselect["BtViewChoice"],
@@ -175,7 +169,16 @@ namespace ms
 
 	void UIWorldSelect::draw(float alpha) const
 	{
-		UIElement::draw_sprites(alpha);
+		// V83_LOGIN_SCENES_V2: draw the background beneath all objects.
+        static const Texture v83_city(
+            nl::nx::map["Obj"]["login.img"]["WorldSelect"]["neoCity"]["0"]["0"]);
+        if (v83_city.is_valid())
+        {
+            Point<int16_t> origin = v83_city.get_origin();
+            v83_city.draw(DrawArgument(origin, origin,
+                Point<int16_t>(800, 600), 1.0f, 1.0f, 1.0f, 0.0f));
+        }
+        UIElement::draw_sprites(alpha);
         if (!world_selected)
             Texture(worldselect["scroll"]["0"]["0"]).draw(
                 position + Point<int16_t>(143, 100));
@@ -186,7 +189,8 @@ namespace ms
 		if (show_recommended)
 		{
 			recommended_textures[0].draw(position + Point<int16_t>(302, 152));
-			recommended_world_textures[recommended_worldid].draw(position + Point<int16_t>(336, 187));
+			if (recommended_worldid < recommended_world_textures.size())
+                recommended_world_textures[recommended_worldid].draw(position + Point<int16_t>(336, 187));
 			recommended_message.draw(position + Point<int16_t>(401, 259));
 		}
 
@@ -222,7 +226,16 @@ namespace ms
 			// v83 world title will be added separately.
 		}
 
-		UIElement::draw_buttons(alpha);
+		// The rope and stage tab sit IN FRONT of the scroll, not behind it.
+        static const Texture v83_hanger(
+            nl::nx::map["Obj"]["login.img"]["WorldSelect"]["signboard"]["0"]["0"]);
+        if (v83_hanger.is_valid())
+            v83_hanger.draw(position + Point<int16_t>(400, 80));
+        static const Texture v83_step(nl::nx::ui["Login.img"]["Common"]["step"]["1"]);
+        if (v83_step.is_valid())
+            v83_step.draw(position + Point<int16_t>(40, 0));
+
+        UIElement::draw_buttons(alpha);
 
 		version.draw(position + Point<int16_t>(707, 1));
 
@@ -452,8 +465,7 @@ namespace ms
             {
                 Point<int16_t> pos(
                     182 + static_cast<int16_t>(index * 27),
-                    158
-                );
+                    158);
 
                 buttons[Buttons::BT_WORLD0 + world.wid] =
                     std::make_unique<MapleButton>(art, pos);

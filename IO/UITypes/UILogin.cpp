@@ -64,7 +64,15 @@ namespace ms
 		sprites.emplace_back(back["35"], Point<int16_t>(399, 260));
 		sprites.emplace_back(prettyLogo, Point<int16_t>(409, 144));
 		sprites.emplace_back(obj["Title"]["signboard"]["0"]["0"], Point<int16_t>(510, 330));
-		sprites.emplace_back(common["frame"], Point<int16_t>(400, 300));
+		// V83_LOGIN_SCENES_V2: v83 light shafts, one animation per effect child.
+        // They belong to the title scene, under the parchment frame.
+        for (int i = 0; i < 6; ++i)
+        {
+            nl::node beam = title["effect"][std::to_string(i)];
+            if (beam)
+                sprites.emplace_back(beam, Point<int16_t>(735, -10));
+        }
+        sprites.emplace_back(common["frame"], Point<int16_t>(400, 300));
 
 		buttons[Buttons::BT_LOGIN] = std::make_unique<MapleButton>(title["BtLogin"], Point<int16_t>(593, 250));
 		buttons[Buttons::BT_SAVEID] = std::make_unique<MapleButton>(title["BtLoginIDSave"], Point<int16_t>(410, 305));

@@ -109,9 +109,8 @@ namespace ms
 
 		nl::node backs = nl::nx::map["Back"]["login.img"]["back"];
         nl::node charObj = nl::nx::map["Obj"]["login.img"]["CharSelect"];
+        // V83_LOGIN_SCENES_V2: the narrow sky strip is tiled in draw().
 
-        if (backs["1"])
-            sprites.emplace_back(backs["1"], Point<int16_t>(400, 300));
         if (backs["10"])
             sprites.emplace_back(backs["10"], Point<int16_t>(77, 32));
         if (backs["15"])
@@ -156,7 +155,7 @@ namespace ms
 		buttons[Buttons::BACK] = std::make_unique<MapleButton>(Common["BtStart"], Point<int16_t>(0, 515));
 
 		for (size_t i = 0; i < PAGESIZE; i++)
-			buttons[Buttons::CHARACTER_SLOT0 + i] = std::make_unique<AreaButton>(get_character_slot_pos(i, 105, 144),
+			buttons[Buttons::CHARACTER_SLOT0 + i] = std::make_unique<AreaButton>(get_character_slot_pos(i, 253, 298),
 																				 Point<int16_t>(50, 90));
 
 		if (require_pic == 0)
@@ -212,7 +211,30 @@ namespace ms
 
 	void UICharSelect::draw(float inter) const
 	{
-		UIElement::draw_sprites(inter);
+		// V83_LOGIN_SCENES_V2: back/1 is a narrow vertical sky strip.
+        // Draw it before the tree and bridge; stretching a single copy
+        // sideways produces the blue column seen in the old build.
+        static const Texture v83_sky(nl::nx::map["Back"]["login.img"]["back"]["1"]);
+        if (v83_sky.is_valid() && v83_sky.width() > 0)
+        {
+            const auto o = v83_sky.get_origin();
+            const int tile = v83_sky.width();
+            for (int x = 0; x < 800; x += tile)
+            {
+                Point<int16_t> p(static_cast<int16_t>(x + o.x()), o.y());
+                v83_sky.draw(DrawArgument(p, p,
+                    Point<int16_t>(static_cast<int16_t>(tile), 600),
+                    1.0f, 1.0f, 1.0f, 0.0f));
+            }
+        }
+        // Clouds belong between the sky and the foreground scenery.
+        static const Texture v83_cloud_back(nl::nx::map["Back"]["login.img"]["back"]["3"]);
+        if (v83_cloud_back.is_valid())
+            v83_cloud_back.draw(position + Point<int16_t>(238, 71));
+        UIElement::draw_sprites(inter);
+        static const Texture v83_cloud_front(nl::nx::map["Back"]["login.img"]["back"]["5"]);
+        if (v83_cloud_front.is_valid())
+            v83_cloud_front.draw(position + Point<int16_t>(301, 407));
 
 		version.draw(position + Point<int16_t>(707, 1));
 		charslot.draw(position + Point<int16_t>(589, 106 - charslot_y));
@@ -234,7 +256,7 @@ namespace ms
 
 			if (index < characters_count)
 			{
-				Point<int16_t> charpos = get_character_slot_pos(i, 135, 234);
+				Point<int16_t> charpos = get_character_slot_pos(i, 278, 374);
 				DrawArgument chararg = DrawArgument(charpos, flip_character);
 
 				nametags[index].draw(charpos);
@@ -246,9 +268,17 @@ namespace ms
 					selectedslot_effect[1].draw(charpos + Point<int16_t>(-5, 16), inter);
 
 					int8_t lvy = -115;
-					Point<int16_t> pos_adj = Point<int16_t>(668, 365);
+					Point<int16_t> pos_adj = Point<int16_t>(
+                        static_cast<int16_t>(charpos.x() + 2), 280);
 
-					charinfo.draw(position + charinfopos);
+					static const Texture v83_info_scroll(
+                        nl::nx::ui["Login.img"]["CharSelect"]["scroll"]["0"]["3"]);
+                    Point<int16_t> scroll_pos(
+                        static_cast<int16_t>(charpos.x() - 108), charinfopos.y());
+                    if (v83_info_scroll.is_valid())
+                        v83_info_scroll.draw(position + scroll_pos);
+                    // The sheet's WZ origin is 45,57, so compensate for it.
+                    charinfo.draw(position + scroll_pos + Point<int16_t>(62, 93));
 
 					std::string levelstr = std::to_string(character_stats.stats[MapleStat::Id::LEVEL]);
 					int16_t lvx = levelset.draw(levelstr, pos_adj + Point<int16_t>(12, lvy));
@@ -274,15 +304,14 @@ namespace ms
 					j = 2;
 				else
 					j = 0;
-
-				signpost[j].draw(chararg);
+                // The single v83 signpost is already in the scene background.
 				charlooks[index].draw(chararg, inter);
 
 				if (selectedslot)
 					selectedslot_effect[0].draw(charpos + Point<int16_t>(-5, -298), inter);
 			} else if (i < slots)
 			{
-				Point<int16_t> emptyslotpos = get_character_slot_pos(i, 130, 234);
+				Point<int16_t> emptyslotpos = get_character_slot_pos(i, 278, 374);
 
 				emptyslot_effect.draw(emptyslotpos, inter);
 				emptyslot.draw(DrawArgument(emptyslotpos, flip_character));
@@ -892,10 +921,9 @@ namespace ms
 
 	Point<int16_t> UICharSelect::get_character_slot_pos(size_t index, uint16_t x_adj, uint16_t y_adj) const
 	{
-		int16_t x = 125 * (index % 4);
-		int16_t y = 200 * (index > 3);
-
-		return Point<int16_t>(x + x_adj, y + y_adj);
+		// v83: one row of eight character positions on the rope bridge.
+        int16_t x = static_cast<int16_t>(72 * index);
+        return Point<int16_t>(static_cast<int16_t>(x + x_adj), static_cast<int16_t>(y_adj));
 	}
 
 	Point<int16_t> UICharSelect::get_infolabel_pos(size_t index) const
