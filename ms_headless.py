@@ -150,7 +150,7 @@ def cmd_start(args) -> None:
     try:
         STATE_DIR.mkdir(parents=True, exist_ok=True)
         STATE_DIR.chmod(0o700)
-        for stale in ("events.jsonl", "events.jsonl.1", "state.json"):
+        for stale in ("events.jsonl", "events.jsonl.1", "state.json", "act.txt", "act.txt.run", "act.tmp"):
             (STATE_DIR / stale).unlink(missing_ok=True)
         display = choose_display()
         AUTH.touch(exist_ok=True, mode=0o600)
@@ -360,8 +360,12 @@ def cmd_act(args) -> None:
     tmp = STATE_DIR / "act.tmp"
     tmp.write_text(f"{act_id} {args.action} {arg}\n")
     tmp.replace(STATE_DIR / "act.txt")
-    hit = wait_for(state, args.timeout, event_types=("act",), text=act_id,
-                   since=since, what=f"result of act {args.action}")
+    try:
+        hit = wait_for(state, args.timeout, event_types=("act",), text=act_id,
+                       since=since, what=f"result of act {args.action}")
+    finally:
+        # An unclaimed request must not run when the client next enters the game.
+        (STATE_DIR / "act.txt").unlink(missing_ok=True)
     print(json.dumps(hit))
     if not hit.get("ok"):
         sys.exit(1)

@@ -196,9 +196,15 @@ namespace ms
 					size_t close = dialog_text.find('#', pos + 2);
 					if (close == std::string::npos)
 						break;
+					std::string index = dialog_text.substr(pos + 2, close - pos - 2);
+					if (index.empty() || index.size() > 9 || index.find_first_not_of("0123456789") != std::string::npos)
+					{
+						pos += 2;
+						continue;
+					}
 					size_t end = dialog_text.find("#l", close + 1);
 					std::string label = dialog_text.substr(close + 1, end == std::string::npos ? std::string::npos : end - close - 1);
-					o << (first ? "" : ",") << "{\"index\":" << dialog_text.substr(pos + 2, close - pos - 2) << ",\"label\":\"" << esc(label) << "\"}";
+					o << (first ? "" : ",") << "{\"index\":" << std::stoi(index) << ",\"label\":\"" << esc(label) << "\"}";
 					first = false;
 					pos = close;
 				}
@@ -269,10 +275,16 @@ namespace ms
 					auto talk = UI::get().get_element<UINpcTalk>();
 					if (!talk || !dialog_open) return act_result(id, name, false, "no open npc dialog");
 					int32_t v;
-					if (arg == "next" || arg == "yes" || arg == "ok") v = 1;
+					if (dialog_type == 4)
+					{
+						// selection menu: only an option index or close
+						if (arg == "close") v = -1;
+						else if (!num(v) || v < 0) return act_result(id, name, false, "expected close|<option index>");
+					}
+					else if (arg == "next" || arg == "yes" || arg == "ok") v = 1;
 					else if (arg == "no" || arg == "prev") v = 0;
 					else if (arg == "close") v = -1;
-					else if (!num(v)) return act_result(id, name, false, "expected next|yes|no|prev|close|<n>");
+					else if (!num(v) || v < -1 || v > 1) return act_result(id, name, false, "expected next|yes|ok|no|prev|close|-1|0|1");
 					if (!talk->headless_respond(v)) return act_result(id, name, false, "unsupported dialog type");
 				}
 				else if (name == "use-item")
@@ -385,7 +397,13 @@ namespace ms
 					}
 					recv.skip_byte();
 					recv.skip_string();
-					(void)target;
+					if (target == Stage::get().get_player().get_oid())
+					{
+						// leave/expel: the departing player is sent the remaining roster
+						party_id = 0; party_leader = 0; party_members.clear();
+						event("party", ",\"party\":null");
+						return;
+					}
 				}
 				else if (mode == 0x0f)
 					recv.skip_string();

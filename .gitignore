@@ -25,3 +25,6 @@ libs/
 .vagrant/
 
 originalWZ
+
+# Python
+__pycache__/
