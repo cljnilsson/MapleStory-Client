@@ -106,6 +106,8 @@ namespace ms
 		// Check if this mob is still alive.
 		bool is_alive() const;
 
+		int32_t get_mobid() const { return id; }
+
 		// Return the head position.
 		Point<int16_t> get_head_position() const;
 

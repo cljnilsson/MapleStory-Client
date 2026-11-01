@@ -127,6 +127,7 @@ namespace ms
 
 		/// Player Interaction
 		CHAR_INFO = 61,
+		PARTY_OPERATION = 62,
 
 		/// Cash Shop
 		SET_CASH_SHOP = 127
@@ -206,6 +207,7 @@ namespace ms
 
 		// Player Interaction
 		emplace<CHAR_INFO, CharInfoHandler>();
+		emplace<PARTY_OPERATION, PartyOperationHandler>();
 
 		// Cash Shop
 		emplace<SET_CASH_SHOP, SetCashShopHandler>();

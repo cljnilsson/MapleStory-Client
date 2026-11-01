@@ -325,6 +325,7 @@ namespace ms
 
 	void CharLook::set_body(int32_t skin_id)
 	{
+		this->skin_id = skin_id;
 		auto iter = bodytypes.find(skin_id);
 
 		if (iter == bodytypes.end())
@@ -341,6 +342,7 @@ namespace ms
 
 	void CharLook::set_hair(int32_t hair_id)
 	{
+		this->hair_id = hair_id;
 		auto iter = hairstyles.find(hair_id);
 
 		if (iter == hairstyles.end())
@@ -357,6 +359,7 @@ namespace ms
 
 	void CharLook::set_face(int32_t face_id)
 	{
+		this->face_id = face_id;
 		auto iter = facetypes.find(face_id);
 
 		if (iter == facetypes.end())

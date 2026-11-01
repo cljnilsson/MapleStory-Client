@@ -17,6 +17,7 @@
 //	along with this program.  If not, see <https://www.gnu.org/licenses/>.		//
 //////////////////////////////////////////////////////////////////////////////////
 #include "Gameplay/Stage.h"
+#include "HeadlessState.h"
 #include "IO/UI.h"
 #include "IO/Window.h"
 #include "Net/Session.h"
@@ -87,6 +88,7 @@ namespace ms
 		Window::get().check_events();
 		Window::get().update();
 		Stage::get().update();
+		HeadlessState::update();
 		UI::get().update();
 		Session::get().read();
 		Music::update_context();

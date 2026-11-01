@@ -59,6 +59,10 @@ namespace ms
 
 		UIElement::Type get_type() const override;
 
+		// Scripted-run response: -1 close, 0 no/prev, 1 yes/next/ok, or the
+		// selection index for SENDSIMPLE. Returns false if the type is unsupported.
+		bool headless_respond(int32_t value);
+
 		void change_text(int32_t npcid, int8_t msgtype, int16_t style, int8_t speaker, const std::string &text);
 
 	protected:
@@ -109,6 +113,7 @@ namespace ms
 		bool draw_text;
 		Slider slider;
 		TalkType type;
+		int8_t raw_type = -1;
 		std::string formatted_text;
 		size_t formatted_text_pos;
 		uint16_t timestep;

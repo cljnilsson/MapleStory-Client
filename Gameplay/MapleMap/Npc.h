@@ -51,6 +51,8 @@ namespace ms
 		// Returns the NPC name
 		std::string get_name();
 
+		int32_t get_npcid() const { return npcid; }
+
 		// Returns the NPC's function description or title.
 		std::string get_func();
 

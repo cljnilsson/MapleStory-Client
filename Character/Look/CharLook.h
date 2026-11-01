@@ -79,6 +79,12 @@ namespace ms
 
 		const Body *get_body() const;
 
+		int32_t get_skin_id() const { return skin_id; }
+
+		int32_t get_hair_id() const { return hair_id; }
+
+		int32_t get_face_id() const { return face_id; }
+
 		const Hair *get_hair() const;
 
 		const Face *get_face() const;
@@ -113,6 +119,10 @@ namespace ms
 		const BodyAction *action;
 		std::string actionstr;
 		uint8_t actframe;
+
+		int32_t skin_id = 0;
+		int32_t hair_id = 0;
+		int32_t face_id = 0;
 
 		const Body *body;
 		const Hair *hair;

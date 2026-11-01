@@ -374,4 +374,14 @@ namespace ms
 
 		return Inventory::Movement::MOVE_NONE;
 	}
+
+	std::vector<std::array<int32_t, 3>> Inventory::list_slots(InventoryType::Id type) const
+	{
+		std::vector<std::array<int32_t, 3>> out;
+
+		for (const auto &entry : inventories[type])
+			out.push_back({entry.first, entry.second.item_id, entry.second.count});
+
+		return out;
+	}
 }

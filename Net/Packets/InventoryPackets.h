@@ -75,7 +75,7 @@ namespace ms
 	class UnequipItemPacket : public MoveItemPacket
 	{
 	public:
-		UnequipItemPacket(int16_t src, int16_t dest) : MoveItemPacket(InventoryType::Id::EQUIPPED, -src, dest, 1) {}
+		UnequipItemPacket(int16_t src, int16_t dest) : MoveItemPacket(InventoryType::Id::EQUIP, -src, dest, 1) {}
 	};
 
 	// A packet which requests that an 'USE' item is used

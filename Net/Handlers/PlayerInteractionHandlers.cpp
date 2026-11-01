@@ -17,6 +17,7 @@
 //////////////////////////////////////////////////////////////////////////////////
 #include "PlayerInteractionHandlers.h"
 
+#include "../../HeadlessState.h"
 #include "../../IO/UI.h"
 
 #include "../../IO/UITypes/UICharInfo.h"
@@ -83,5 +84,10 @@ namespace ms
 		// Update the character information window
 		if (auto charinfo = UI::get().get_element<UICharInfo>())
 			charinfo->update_stats(character_id, character_job_id, character_level, character_fame, guild_name, alliance_name);
+	}
+
+	void PartyOperationHandler::handle(InPacket& recv) const
+	{
+		HeadlessState::on_party(recv);
 	}
 }

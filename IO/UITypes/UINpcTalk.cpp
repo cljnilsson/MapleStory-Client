@@ -24,6 +24,8 @@
 
 #include "../Net/Packets/NpcInteractionPackets.h"
 
+#include "../../HeadlessState.h"
+
 #include <nlnx/nx.hpp>
 
 namespace ms
@@ -142,6 +144,7 @@ namespace ms
 	Button::State UINpcTalk::button_pressed(uint16_t buttonid)
 	{
 		deactivate();
+		HeadlessState::clear_dialog();
 
 		switch (type)
 		{
@@ -262,9 +265,36 @@ namespace ms
 		if (pressed && escape)
 		{
 			deactivate();
+			HeadlessState::clear_dialog();
 
 			NpcTalkMorePacket(type, 0).dispatch();
 		}
+	}
+
+	bool UINpcTalk::headless_respond(int32_t value)
+	{
+		// Dispatch on the server's raw message type: the TalkType enum above is
+		// numbered differently (its SENDSIMPLE is 7, the server's menu is 4).
+		switch (raw_type)
+		{
+			case 0: // ok / next / prev
+			case 1: // yes / no
+			case 12: // accept / decline
+				NpcTalkMorePacket(raw_type, static_cast<int8_t>(value)).dispatch();
+				break;
+			case 4: // selection menu
+				if (value < 0)
+					NpcTalkMorePacket(raw_type, 0).dispatch();
+				else
+					NpcTalkMorePacket(value).dispatch();
+				break;
+			default:
+				return false;
+		}
+
+		deactivate();
+		HeadlessState::clear_dialog();
+		return true;
 	}
 
 	UIElement::Type UINpcTalk::get_type() const
@@ -332,11 +362,14 @@ namespace ms
 	void UINpcTalk::change_text(int32_t npcid, int8_t msgtype, int16_t, int8_t speakerbyte, const std::string &tx)
 	{
 		type = get_by_value(msgtype);
+		raw_type = msgtype;
 
 		timestep = 0;
 		draw_text = true;
 		formatted_text_pos = 0;
 		formatted_text = format_text(tx, npcid);
+
+		HeadlessState::set_dialog(npcid, msgtype, formatted_text);
 
 		text = Text(Text::Font::A12M, Text::Alignment::LEFT, Color::Name::DARKGREY, formatted_text, 320);
 

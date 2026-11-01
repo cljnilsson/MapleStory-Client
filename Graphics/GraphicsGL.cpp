@@ -621,6 +621,11 @@ namespace ms
 						return last;
 					} else
 					{
+						// Always consume at least one character, or a glyph wider than
+						// maxwidth would recurse on identical arguments forever.
+						if (i == first)
+							i = first + 1;
+
 						prev = add(text, prev, first, i);
 						return add(text, prev, i, last);
 					}

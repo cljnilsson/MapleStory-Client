@@ -17,6 +17,10 @@
 //////////////////////////////////////////////////////////////////////////////////
 #include "UIChatBar.h"
 
+#include "../../HeadlessState.h"
+
+#include <cstdlib>
+
 #include "../Components/MapleButton.h"
 
 #include "../../Net/Packets/MessagingPackets.h"
@@ -108,6 +112,10 @@ namespace ms
 
 							lastentered.push_back(msg);
 							lastpos = lastentered.size();
+
+							// Scripted runs need a known state: each sent line closes the field.
+							if (std::getenv("MS_HEADLESS_DIR"))
+								toggle_chatfield(false);
 						} else
 						{
 							toggle_chatfield();
@@ -421,6 +429,8 @@ namespace ms
 
 	void UIChatBar::send_chatline(const std::string &line, LineType type)
 	{
+		HeadlessState::event("chat", ",\"line\":" + std::to_string(static_cast<int>(type)) + ",\"text\":\"" + HeadlessState::escape(line) + "\"");
+
 		rowmax++;
 		rowpos = rowmax;
 

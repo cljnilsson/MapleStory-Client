@@ -56,6 +56,8 @@ namespace ms
 
 		Loot find_loot_at(Point<int16_t> playerpos);
 
+		MapObjects *get_drops() { return &drops; }
+
 	private:
 		MapObjects drops;
 

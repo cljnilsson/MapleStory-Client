@@ -15,6 +15,7 @@
 //	You should have received a copy of the GNU Affero General Public License	//
 //	along with this program.  If not, see <https://www.gnu.org/licenses/>.		//
 //////////////////////////////////////////////////////////////////////////////////
+#include "../../HeadlessState.h"
 #include "SetFieldHandlers.h"
 
 #include "Timer.h"
@@ -52,7 +53,7 @@ namespace ms
 				GraphicsGL::get().unlock();
 
 				Stage::get().transfer_player();
-				std::cout << "HEADLESS_STATE in_game" << std::endl;
+				{ std::cout << "HEADLESS_STATE in_game" << std::endl; HeadlessState::set_screen("in_game"); }
 			});
 
 		GraphicsGL::get().lock();

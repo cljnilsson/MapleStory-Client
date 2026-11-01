@@ -25,6 +25,7 @@ include_directories(Template)
 include_directories(Util)
 
 add_executable(HeavenClient
+    HeadlessState.cpp
     Audio/Audio.cpp
     Audio/Audio.h
     Character/Inventory/Equip.cpp

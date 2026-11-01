@@ -15,6 +15,7 @@
 //	You should have received a copy of the GNU Affero General Public License	//
 //	along with this program.  If not, see <https://www.gnu.org/licenses/>.		//
 //////////////////////////////////////////////////////////////////////////////////
+#include "../../HeadlessState.h"
 #include "UILogin.h"
 #include "../../Graphics/GraphicsGL.h"
 
@@ -155,7 +156,7 @@ namespace ms
 					).dispatch();
 		}
 
-		std::cout << "HEADLESS_STATE login" << std::endl;
+		{ std::cout << "HEADLESS_STATE login" << std::endl; HeadlessState::set_screen("login"); }
 	}
 
 	void UILogin::draw(float alpha) const

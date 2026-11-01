@@ -1,0 +1,67 @@
+{
+  "name": "peer-visibility",
+  "params": {
+    "password": "admin",
+    "user_b": "admin2",
+    "password_b": "admin",
+    "map": "100000104"
+  },
+  "steps": [
+    {
+      "session": "a",
+      "start": true
+    },
+    {
+      "session": "b",
+      "start": true
+    },
+    {
+      "session": "b",
+      "play": true,
+      "username": "${user_b}",
+      "password": "${password_b}"
+    },
+    {
+      "session": "a",
+      "play": true,
+      "username": "admin",
+      "password": "${password}"
+    },
+    {
+      "session": "a",
+      "gm": "!warp ${map}",
+      "name": "a warps next to b"
+    },
+    {
+      "session": "a",
+      "wait": {
+        "state": "map==${map}"
+      },
+      "timeout": 15
+    },
+    {
+      "session": "a",
+      "wait": {
+        "state": "chars.0"
+      },
+      "timeout": 30,
+      "name": "a sees b"
+    },
+    {
+      "session": "b",
+      "wait": {
+        "state": "chars.0"
+      },
+      "timeout": 30,
+      "name": "b sees a"
+    },
+    {
+      "session": "a",
+      "stop": true
+    },
+    {
+      "session": "b",
+      "stop": true
+    }
+  ]
+}

@@ -26,4 +26,11 @@ namespace ms
 	{
 		void handle(InPacket& recv) const override;
 	};
+
+	// Party roster, invites and status messages
+	// Opcode: PARTY_OPERATION(62)
+	class PartyOperationHandler : public PacketHandler
+	{
+		void handle(InPacket& recv) const override;
+	};
 }

@@ -15,6 +15,7 @@
 //	You should have received a copy of the GNU Affero General Public License	//
 //	along with this program.  If not, see <https://www.gnu.org/licenses/>.		//
 //////////////////////////////////////////////////////////////////////////////////
+#include "../../HeadlessState.h"
 #include "UIWorldSelect.h"
 
 #include "UILoginNotice.h"
@@ -480,7 +481,7 @@ namespace ms
                 channelid = 0;
         }
 
-		std::cout << "HEADLESS_STATE world_select" << std::endl;
+		{ std::cout << "HEADLESS_STATE world_select" << std::endl; HeadlessState::set_screen("world_select"); }
     }
 
 	void UIWorldSelect::add_world(World world)
@@ -513,7 +514,7 @@ namespace ms
 		}
 
 		buttons[Buttons::BT_ENTERWORLD]->set_active(true);
-		std::cout << "HEADLESS_STATE channel_select" << std::endl;
+		{ std::cout << "HEADLESS_STATE channel_select" << std::endl; HeadlessState::set_screen("channel_select"); }
 	}
 
 	void UIWorldSelect::remove_selected()

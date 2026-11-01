@@ -15,6 +15,7 @@
 //	You should have received a copy of the GNU Affero General Public License	//
 //	along with this program.  If not, see <https://www.gnu.org/licenses/>.		//
 //////////////////////////////////////////////////////////////////////////////////
+#include "../../HeadlessState.h"
 #include "MessagingHandlers.h"
 
 #include "../../Data/ItemData.h"
@@ -168,6 +169,8 @@ namespace ms
 			recv.skip(1);
 
 		std::string message = recv.read_string();
+
+		HeadlessState::event("notice", ",\"kind\":" + std::to_string(static_cast<int>(type)) + ",\"text\":\"" + HeadlessState::escape(message) + "\"");
 
 		if (type == 3)
 		{

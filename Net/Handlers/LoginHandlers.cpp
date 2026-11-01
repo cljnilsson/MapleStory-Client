@@ -1,3 +1,4 @@
+#include "../../HeadlessState.h"
 #include <iostream>
 //////////////////////////////////////////////////////////////////////////////////
 //	This file is part of the continued Journey MMORPG client					//
@@ -55,6 +56,7 @@ namespace ms
 			if (int32_t reason = recv.read_int())
 			{
 				std::cout << "HEADLESS_ERROR login reason=" << reason << std::endl;
+				HeadlessState::event("error", ",\"where\":\"login\",\"reason\":" + std::to_string(reason));
 				// Login unsuccessful
 				// The LoginNotice displayed will contain the specific information
 				switch (reason)
@@ -194,6 +196,7 @@ namespace ms
 			std::cout << "HEADLESS_STATE character_select count="
 			          << static_cast<int>(charcount) << " pic="
 			          << static_cast<int>(pic) << std::endl;
+			HeadlessState::set_screen("character_select");
 		}
 	}
 

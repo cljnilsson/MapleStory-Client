@@ -1,0 +1,11 @@
+{
+  "name": "login-to-game",
+  "params": {"user": "admin", "password": "admin"},
+  "steps": [
+    {"start": true},
+    {"play": true, "username": "${user}", "password": "${password}", "timeout": 90},
+    {"assert": "screen==in_game", "timeout": 10},
+    {"assert": "player.hp>0"},
+    {"stop": true}
+  ]
+}

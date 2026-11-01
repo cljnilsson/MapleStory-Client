@@ -27,7 +27,9 @@
 
 #include "../../Template/Optional.h"
 
+#include <array>
 #include <map>
+#include <vector>
 #include <unordered_map>
 
 namespace ms
@@ -124,6 +126,9 @@ namespace ms
 
 		// Return the id of an item. Returns 0 if the slot is empty.
 		int32_t get_item_id(InventoryType::Id type, int16_t slot) const;
+
+		// Return all occupied slots as (slot, item id, count) for one inventory tab.
+		std::vector<std::array<int32_t, 3>> list_slots(InventoryType::Id type) const;
 
 		// Return a pointer to an equip
 		Optional<const Equip> get_equip(InventoryType::Id type, int16_t slot) const;
