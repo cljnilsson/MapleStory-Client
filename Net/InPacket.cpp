@@ -36,6 +36,9 @@ namespace ms
 		return top - pos;
 	}
 
+	size_t InPacket::position() const { return pos; }
+	size_t InPacket::packet_length() const { return top; }
+
 	void InPacket::skip(size_t count)
 	{
 		if (count > length())

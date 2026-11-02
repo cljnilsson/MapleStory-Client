@@ -16,6 +16,9 @@ namespace ms
 		// Append one JSON object to events.jsonl; `fields` is a comma-led JSON
 		// fragment such as ",\"text\":\"hi\"" (empty allowed). No-op when disabled.
 		void event(const char *type, const std::string &fields = "");
+		// Record packet decode and dispatch failures without including packet contents.
+		void packet_error(int32_t opcode, size_t packet_length, size_t parser_offset,
+						 const std::string &reason, bool handled);
 
 		// JSON string escape (without quotes).
 		std::string escape(const std::string &s);

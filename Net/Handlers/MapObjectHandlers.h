@@ -91,6 +91,13 @@ namespace ms
 		void handle(InPacket& recv) const override;
 	};
 
+	// Acknowledge a monster movement request from its controller.
+	// Opcode: MOB_MOVE_RESPONSE(240)
+	class MobMoveResponseHandler : public PacketHandler
+	{
+		void handle(InPacket& recv) const override;
+	};
+
 	// Updates a mob's hp with the client
 	// Opcode: SHOW_MOB_HP(250)
 	class ShowMobHpHandler : public PacketHandler
@@ -108,6 +115,19 @@ namespace ms
 	// Spawn an NPC on the current stage and take control of it
 	// Opcode: SPAWN_NPC_C(259)
 	class SpawnNpcControllerHandler : public PacketHandler
+	{
+		void handle(InPacket& recv) const override;
+	};
+
+	// Remove an NPC from the current stage.
+	// Opcode: REMOVE_NPC(122)
+	class RemoveNpcHandler : public PacketHandler
+	{
+		void handle(InPacket& recv) const override;
+	};
+
+	// Remove an imitated NPC (Player NPC) from the current stage.
+	class RemoveImitatedNpcHandler : public PacketHandler
 	{
 		void handle(InPacket& recv) const override;
 	};

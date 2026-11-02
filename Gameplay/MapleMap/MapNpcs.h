@@ -42,6 +42,9 @@ namespace ms
 		// Remove the npc with the specified oid;
 		void remove(int32_t oid);
 
+		// The server stopped assigning this client control of the NPC.
+		void lose_control(int32_t oid);
+
 		// Remove all NPCs.
 		void clear();
 

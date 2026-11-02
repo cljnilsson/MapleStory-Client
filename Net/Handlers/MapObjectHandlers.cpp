@@ -19,7 +19,9 @@
 
 #include "Helpers/LoginParser.h"
 #include "Helpers/MovementParser.h"
+#include "Helpers/MonsterStatusParser.h"
 
+#include "../../HeadlessState.h"
 #include "../../Gameplay/Stage.h"
 
 namespace ms
@@ -203,7 +205,7 @@ namespace ms
 		recv.read_byte(); // 5 if controller == null
 		int32_t id = recv.read_int();
 
-		recv.skip(22);
+		MonsterStatusParser::skip_temporary(recv);
 
 		Point<int16_t> position = recv.read_point();
 		int8_t stance = recv.read_byte();
@@ -256,7 +258,7 @@ namespace ms
 
 				int32_t id = recv.read_int();
 
-				recv.skip(22);
+				MonsterStatusParser::skip_temporary(recv);
 
 				Point<int16_t> position = recv.read_point();
 				int8_t stance = recv.read_byte();
@@ -308,6 +310,16 @@ namespace ms
 		Stage::get().get_mobs().send_movement(oid, position, std::move(movements));
 	}
 
+	void MobMoveResponseHandler::handle(InPacket& recv) const
+	{
+		recv.read_int();   // object id
+		recv.read_short(); // movement id
+		recv.read_bool();  // can use skills
+		recv.read_short(); // current MP
+		recv.read_byte();  // next skill id
+		recv.read_byte();  // next skill level
+	}
+
 	void ShowMobHpHandler::handle(InPacket& recv) const
 	{
 		int32_t oid = recv.read_int();
@@ -340,7 +352,7 @@ namespace ms
 
 		if (mode == 0)
 		{
-			Stage::get().get_npcs().remove(oid);
+			Stage::get().get_npcs().lose_control(oid);
 		}
 		else
 		{
@@ -357,6 +369,24 @@ namespace ms
 				{ oid, id, position, flip, fh }
 			);
 		}
+	}
+
+	void RemoveNpcHandler::handle(InPacket& recv) const
+	{
+		int32_t oid = recv.read_int();
+		Stage::get().get_npcs().remove(oid);
+		HeadlessState::event("npc_removed", ",\"oid\":" + std::to_string(oid));
+	}
+
+	void RemoveImitatedNpcHandler::handle(InPacket& recv) const
+	{
+		int8_t mode = recv.read_byte();
+		if (mode != 0)
+			return;
+
+		int32_t oid = recv.read_int();
+		Stage::get().get_npcs().remove(oid);
+		HeadlessState::event("npc_removed", ",\"oid\":" + std::to_string(oid) + ",\"kind\":\"playernpc\"");
 	}
 
 	void DropLootHandler::handle(InPacket& recv) const

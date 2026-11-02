@@ -21,6 +21,14 @@
 
 namespace ms
 {
+	static bool is_fourth_job_skill(int32_t skillid)
+	{
+		int32_t job = skillid / 10000;
+		if (job == 2212) return false;
+		return job % 10 == 2 || skillid == 22170001 || skillid == 22171003 ||
+			skillid == 22171004 || skillid == 22181002 || skillid == 22181003;
+	}
+
 	void CharacterParser::parse_inventory(InPacket& recv, Inventory& invent)
 	{
 		invent.set_meso(recv.read_int());
@@ -67,6 +75,7 @@ namespace ms
 
 	void CharacterParser::parse_skillbook(InPacket& recv, SkillBook& skills)
 	{
+		// parse_inventory consumes this marker as the empty CASH inventory terminator.
 		int16_t size = recv.read_short();
 
 		for (int16_t i = 0; i < size; i++)
@@ -74,8 +83,7 @@ namespace ms
 			int32_t skill_id = recv.read_int();
 			int32_t level = recv.read_int();
 			int64_t expiration = recv.read_long();
-			bool fourthtjob = ((skill_id % 100000) / 10000 == 2);
-			int32_t masterlevel = fourthtjob ? recv.read_int() : 0;
+			int32_t masterlevel = is_fourth_job_skill(skill_id) ? recv.read_int() : 0;
 			skills.set_skill(skill_id, level, masterlevel, expiration);
 		}
 	}

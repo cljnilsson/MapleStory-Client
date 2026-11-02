@@ -30,6 +30,7 @@
 #include "Handlers/PlayerInteractionHandlers.h"
 #include "Handlers/SetFieldHandlers.h"
 #include "Handlers/TestingHandlers.h"
+#include "../HeadlessState.h"
 
 #include "../Configuration.h"
 
@@ -110,9 +111,13 @@ namespace ms
 		KILL_MOB = 237,
 		SPAWN_MOB_C = 238,
 		MOB_MOVED = 239,
+		MOB_MOVE_RESPONSE = 240,
 		SHOW_MOB_HP = 250,
 		SPAWN_NPC = 257,
 		SPAWN_NPC_C = 259,
+		REMOVE_NPC = 0x102,
+		IMITATED_NPC_DATA = 81,
+		PLAYER_HINT = 214,
 		DROP_LOOT = 268,
 		REMOVE_LOOT = 269,
 		HIT_REACTOR = 277,
@@ -161,9 +166,12 @@ namespace ms
 		emplace<SPAWN_PET, SpawnPetHandler>();
 		emplace<SPAWN_NPC, SpawnNpcHandler>();
 		emplace<SPAWN_NPC_C, SpawnNpcControllerHandler>();
+		emplace<REMOVE_NPC, RemoveNpcHandler>();
+		emplace<IMITATED_NPC_DATA, RemoveImitatedNpcHandler>();
 		emplace<SPAWN_MOB, SpawnMobHandler>();
 		emplace<SPAWN_MOB_C, SpawnMobControllerHandler>();
 		emplace<MOB_MOVED, MobMovedHandler>();
+		emplace<MOB_MOVE_RESPONSE, MobMoveResponseHandler>();
 		emplace<SHOW_MOB_HP, ShowMobHpHandler>();
 		emplace<KILL_MOB, KillMobHandler>();
 		emplace<DROP_LOOT, DropLootHandler>();
@@ -190,6 +198,7 @@ namespace ms
 
 		// Messaging handlers
 		emplace<SHOW_STATUS_INFO, ShowStatusInfoHandler>();
+		emplace<PLAYER_HINT, PlayerHintHandler>();
 		emplace<CHAT_RECEIVED, ChatReceivedHandler>();
 		emplace<SCROLL_RESULT, ScrollResultHandler>();
 		emplace<SERVER_MESSAGE, ServerMessageHandler>();
@@ -221,6 +230,12 @@ namespace ms
 	{
 		// Wrap the bytes with a parser
 		InPacket recv = { bytes, length };
+		if (length < sizeof(uint16_t))
+		{
+			warn("Packet too short to contain opcode", 0);
+			HeadlessState::packet_error(-1, length, 0, "Packet too short to contain opcode", true);
+			return;
+		}
 
 		// Read the opcode to determine handler responsible
 		uint16_t opcode = recv.read_short();
@@ -269,18 +284,21 @@ namespace ms
 				{
 					// Notice about an error
 					warn(err.what(), opcode);
+					HeadlessState::packet_error(opcode, length, recv.position(), err.what(), true);
 				}
 			}
 			else
 			{
 				// Warn about an unhandled packet
 				warn(MSG_UNHANDLED, opcode);
+				HeadlessState::packet_error(opcode, length, recv.position(), MSG_UNHANDLED, false);
 			}
 		}
 		else
 		{
 			// Warn about a packet with opcode out of bounds
 			warn(MSG_OUTOFBOUNDS, opcode);
+			HeadlessState::packet_error(opcode, length, recv.position(), MSG_OUTOFBOUNDS, false);
 		}
 	}
 

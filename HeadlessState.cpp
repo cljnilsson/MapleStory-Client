@@ -5,16 +5,21 @@
 #include "Gameplay/MapleMap/Mob.h"
 #include "IO/UI.h"
 #include "IO/KeyAction.h"
+#include "IO/UITypes/UIEquipInventory.h"
+#include "IO/UITypes/UIItemInventory.h"
 #include "IO/UITypes/UINpcTalk.h"
+#include "IO/UITypes/UIStatsInfo.h"
 #include "Net/Packets/InventoryPackets.h"
 #include "Net/Packets/GameplayPackets.h"
 #include "Net/Packets/NpcInteractionPackets.h"
 
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <map>
+#include <random>
 #include <set>
 #include <sstream>
 #include <string>
@@ -29,6 +34,16 @@ namespace ms
 			std::string screen = "starting";
 			bool dirty = true;
 			std::chrono::steady_clock::time_point last;
+			uint64_t snapshot_seq = 0;
+			uint64_t progress = 0;
+			const auto process_start = std::chrono::steady_clock::now();
+			const std::string session_id = [] {
+				if (const char *id = std::getenv("MS_HEADLESS_SESSION_ID"); id && *id) return std::string(id);
+				std::random_device random;
+				std::ostringstream out;
+				out << std::hex << random() << random();
+				return out.str();
+			}();
 
 			const char *dir()
 			{
@@ -241,6 +256,25 @@ namespace ms
 				}
 			}
 
+			void cancel_hold(const std::string &reason)
+			{
+				if (!hold.active) return;
+				Stage::get().send_key(KeyType::Id::ACTION, hold.action, false);
+				act_result(hold.id, hold.name, false, reason);
+				hold.active = false;
+			}
+
+			void poll_cancel(const char *d)
+			{
+				std::string path = std::string(d) + "/cancel.txt";
+				std::string run = path + ".run";
+				if (std::rename(path.c_str(), run.c_str()) != 0) return;
+				std::string id;
+				{ std::ifstream f(run); f >> id; }
+				std::remove(run.c_str());
+				if (hold.active && id == hold.id) cancel_hold("request canceled by caller");
+			}
+
 			// One request per file: "<id> <act> <arg>" written atomically by ms_headless.py.
 			void poll_act(const char *d)
 			{
@@ -310,6 +344,41 @@ namespace ms
 					int16_t free_slot = inv.find_free_slot(InventoryType::Id::EQUIP);
 					if (!free_slot) return act_result(id, name, false, "equip tab full");
 					UnequipItemPacket(n, free_slot).dispatch();
+				}
+				else if (name == "window")
+				{
+					std::istringstream args(arg);
+					std::string window, operation, extra;
+					args >> window >> operation;
+					if ((args >> extra) || (operation != "open" && operation != "close"))
+						return act_result(id, name, false, "expected <stats|items|equipment> <open|close>");
+					bool open = operation == "open";
+					if (window == "stats")
+					{
+						auto current = UI::get().get_element<UIStatsInfo>();
+						if (open && (!current || !current->is_active()))
+							UI::get().emplace<UIStatsInfo>(Stage::get().get_player().get_stats());
+						else if (!open && current && current->is_active())
+							UI::get().remove(UIElement::Type::STATSINFO);
+					}
+					else if (window == "items")
+					{
+						auto current = UI::get().get_element<UIItemInventory>();
+						if (open && (!current || !current->is_active()))
+							UI::get().emplace<UIItemInventory>(inv);
+						else if (!open && current && current->is_active())
+							UI::get().remove(UIElement::Type::ITEMINVENTORY);
+					}
+					else if (window == "equipment")
+					{
+						auto current = UI::get().get_element<UIEquipInventory>();
+						if (open && (!current || !current->is_active()))
+							UI::get().emplace<UIEquipInventory>(inv);
+						else if (!open && current && current->is_active())
+							UI::get().remove(UIElement::Type::EQUIPINVENTORY);
+					}
+					else
+						return act_result(id, name, false, "expected stats|items|equipment");
 				}
 				else if (name == "move")
 				{
@@ -455,7 +524,8 @@ namespace ms
 			auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
 					std::chrono::system_clock::now().time_since_epoch()).count();
 			std::ostringstream o;
-			o << "{\"seq\":" << ++seq << ",\"ts\":" << ms << ",\"type\":\"" << type << "\"" << fields << "}\n";
+			o << "{\"session_id\":\"" << esc(session_id) << "\",\"seq\":" << ++seq
+			  << ",\"ts\":" << ms << ",\"type\":\"" << type << "\"" << fields << "}\n";
 			std::string line = o.str();
 
 			std::string path = std::string(d) + "/events.jsonl";
@@ -469,6 +539,16 @@ namespace ms
 			bytes += line.size();
 		}
 
+		void packet_error(int32_t opcode, size_t packet_length, size_t parser_offset,
+						  const std::string &reason, bool handled)
+		{
+			event("packet_error", ",\"opcode\":" + std::to_string(opcode)
+				+ ",\"length\":" + std::to_string(packet_length)
+				+ ",\"offset\":" + std::to_string(parser_offset)
+				+ ",\"handled\":" + (handled ? "true" : "false")
+				+ ",\"reason\":\"" + esc(reason) + "\"");
+		}
+
 		void set_screen(const char *name)
 		{
 			if (screen != name)
@@ -479,16 +559,23 @@ namespace ms
 
 		void update()
 		{
+			++progress;
 			const char *d = dir();
 			if (!d)
 				return;
 
 			if (screen == "in_game")
 			{
+				int32_t previous_map = last_map;
 				track_changes();
+				if (previous_map != -1 && previous_map != last_map)
+					cancel_hold("map changed during move");
+				poll_cancel(d);
 				poll_hold();
 				poll_act(d);
 			}
+			else
+				cancel_hold("left in-game screen");
 
 			auto now = std::chrono::steady_clock::now();
 			if (!dirty && now - last < std::chrono::milliseconds(250))
@@ -497,7 +584,16 @@ namespace ms
 			dirty = false;
 
 			std::ostringstream o;
-			o << "{\"screen\":\"" << screen << "\"";
+			const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+					now - process_start).count();
+			const char *build_id = std::getenv("MS_HEADLESS_BUILD_ID");
+			const char *asset_id = std::getenv("MS_HEADLESS_ASSET_ID");
+			o << "{\"schema\":1,\"build\":\"" << esc(build_id && *build_id ? build_id : "heavenclient-v83-headless-1")
+			  << "\",\"assets\":\"" << esc(asset_id && *asset_id ? asset_id : "runtime-nx") << "\""
+			  << ",\"session_id\":\"" << esc(session_id) << "\",\"seq\":" << ++snapshot_seq
+			  << ",\"progress\":" << progress << ",\"uptime_ms\":" << elapsed_ms
+			  << ",\"capabilities\":[\"npc-talk\",\"npc-choose\",\"use-item\",\"equip\",\"unequip\",\"window\",\"move\",\"jump\",\"portal\",\"attack\",\"party-create\",\"party-leave\",\"party-invite\",\"party-accept\"]"
+			  << ",\"screen\":\"" << screen << "\"";
 			if (screen == "in_game")
 			{
 				Player &p = Stage::get().get_player();
@@ -526,6 +622,15 @@ namespace ms
 					dialog(o);
 				else
 					o << "null";
+				auto stats = UI::get().get_element<UIStatsInfo>();
+				auto item_inventory = UI::get().get_element<UIItemInventory>();
+				auto equip_inventory = UI::get().get_element<UIEquipInventory>();
+				o << ",\"ui\":{\"stats_open\":"
+				  << (stats && stats->is_active() ? "true" : "false")
+				  << ",\"item_inventory_open\":"
+				  << (item_inventory && item_inventory->is_active() ? "true" : "false")
+				  << ",\"equip_inventory_open\":"
+				  << (equip_inventory && equip_inventory->is_active() ? "true" : "false") << "}";
 				o << ",";
 				objects(o, Stage::get().get_chars().get_chars(), "chars");
 				o << ",";
@@ -535,6 +640,8 @@ namespace ms
 				o << ",";
 				objects(o, Stage::get().get_drops().get_drops(), "drops");
 			}
+			else
+				o << ",\"map\":null";
 			o << "}\n";
 
 			std::string path = std::string(d) + "/state.json";

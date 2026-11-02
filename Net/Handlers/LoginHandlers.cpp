@@ -41,19 +41,23 @@ namespace ms
 	void LoginResultHandler::handle(InPacket& recv) const
 	{
 		auto loginwait = UI::get().get_element<UILoginWait>();
+		HeadlessState::event("login_result_handler", ",\"wait_present\":" + std::string(loginwait ? "true" : "false") +
+			",\"wait_active\":" + std::string(loginwait && loginwait->is_active() ? "true" : "false"));
 
 		if (loginwait && loginwait->is_active())
 		{
+			std::function<void()> okhandler = loginwait->get_handler();
+			int32_t reason = recv.read_int();
+			HeadlessState::event("login_result", ",\"reason\":" + std::to_string(reason));
+
 			// Remove previous UIs
 			UI::get().remove(UIElement::Type::LOGINNOTICE);
 			UI::get().remove(UIElement::Type::LOGINWAIT);
 			UI::get().remove(UIElement::Type::TOS);
 			UI::get().remove(UIElement::Type::GENDER);
 
-			std::function<void()> okhandler = loginwait->get_handler();
-
 			// The packet should contain a 'reason' integer which can signify various things
-			if (int32_t reason = recv.read_int())
+			if (reason)
 			{
 				std::cout << "HEADLESS_ERROR login reason=" << reason << std::endl;
 				HeadlessState::event("error", ",\"where\":\"login\",\"reason\":" + std::to_string(reason));
@@ -93,6 +97,7 @@ namespace ms
 				// Login successful
 				// The packet contains information on the account, so we initialize the account with it.
 				Account account = LoginParser::parse_account(recv);
+				HeadlessState::event("login_account_parsed", ",\"gender\":" + std::to_string(account.female));
 
 				Configuration::get().set_admin(account.admin);
 
@@ -110,6 +115,7 @@ namespace ms
 
 					// Request the list of worlds and channels online.
 					ServerRequestPacket().dispatch();
+					HeadlessState::event("serverlist_request_sent");
 				}
 			}
 		}

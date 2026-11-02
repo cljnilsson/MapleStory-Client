@@ -26,7 +26,9 @@ from __future__ import annotations
 
 import argparse
 import collections
+import fcntl
 import getpass
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -37,6 +39,7 @@ import signal
 import subprocess
 import sys
 import time
+import uuid
 
 def pick_session(argv: list[str]) -> str | None:
     """Extract --session NAME (anywhere in argv) so every command shares one parser path."""
@@ -175,6 +178,7 @@ def cmd_start(args) -> None:
             "client_start": None,
             "project": str(project),
             "started_at": time.strftime("%Y-%m-%d %H:%M:%S %z"),
+            "session_id": secrets.token_hex(16),
         }
         for _ in range(80):
             if xvfb.poll() is not None:
@@ -191,7 +195,15 @@ def cmd_start(args) -> None:
             die(f"Xvfb did not initialize. Examine {X_LOG}")
 
         env = env_for(state)
+        # Headless sessions must never use a host audio device. Keep this
+        # enforced here so every CLI start is silent, even when the caller
+        # forgets to set the OpenAL driver override.
+        env["ALSOFT_DRIVERS"] = "null"
         env["MS_HEADLESS_DIR"] = str(STATE_DIR)
+        env["MS_HEADLESS_SESSION_ID"] = state["session_id"]
+        env["MS_HEADLESS_BUILD_ID"] = hashlib.sha256(binary.read_bytes()).hexdigest()
+        asset_manifest = "\n".join(f"{p.name}:{p.stat().st_size}" for p in sorted(build_dir.glob("*.nx")))
+        env["MS_HEADLESS_ASSET_ID"] = hashlib.sha256(asset_manifest.encode()).hexdigest()
         if not args.no_software_gl:
             env["LIBGL_ALWAYS_SOFTWARE"] = "1"
             env["GALLIUM_DRIVER"] = "llvmpipe"
@@ -202,6 +214,7 @@ def cmd_start(args) -> None:
                                       stderr=subprocess.STDOUT, start_new_session=True)
         state["client_pid"] = client.pid
         state["client_start"] = proc_identity(client.pid)
+        state["client_started_epoch"] = time.time()
         STATE_PATH.write_text(json.dumps(state, indent=2) + "\n")
         STATE_PATH.chmod(0o600)
         time.sleep(0.3)
@@ -212,19 +225,22 @@ def cmd_start(args) -> None:
         print("No window appears on your desktop; OpenGL still runs on the virtual display.")
         print(f"Client log: {CLIENT_LOG}")
         print(f"X server log: {X_LOG}")
-        print("Commands: status | logs | key | type | click | gm | play | wait | stop")
+        print("Commands: status | logs | key | type | click | gm | act | batch | play | wait | stop")
     finally:
         os.umask(old_umask)
 
 
 def cmd_status(args) -> None:
     state = read_state()
+    snapshot = load_state_json()
+    diagnostic = snapshot_diagnostic(snapshot, state)
     print(json.dumps({
         "client_running": client_alive(state),
         "xserver_running": virtual_alive(state),
         "display": state["display"],
         "client_pid": state["client_pid"],
         "started_at": state.get("started_at"),
+        "snapshot": diagnostic,
         "client_log": str(CLIENT_LOG),
         "xserver_log": str(X_LOG),
     }, indent=2))
@@ -258,6 +274,13 @@ def focus_game(state: dict) -> str:
     return window
 
 
+def focus_diagnostic(state: dict, window: str) -> dict:
+    """Report whether X11 actually assigned focus to the game window."""
+    focused = run_xdotool(state, "getwindowfocus", capture=True).stdout.strip()
+    return {"window": window, "focused_window": focused,
+            "focus_ok": focused == window}
+
+
 def press(state: dict, key: str, hold_ms: int = 0) -> None:
     if hold_ms:
         run_xdotool(state, "keydown", "--clearmodifiers", key)
@@ -269,9 +292,11 @@ def press(state: dict, key: str, hold_ms: int = 0) -> None:
 
 def cmd_key(args) -> None:
     state = read_state()
-    focus_game(state)
+    window = focus_game(state)
+    focus = focus_diagnostic(state, window)
     press(state, args.key, args.hold_ms)
-    print(f"Sent key {args.key} (hold {args.hold_ms}ms)")
+    print(json.dumps({"sent": True, "key": args.key, "hold_ms": args.hold_ms,
+                      "focus": focus}))
 
 
 def get_typed_text(args) -> str:
@@ -319,17 +344,21 @@ def type_text(state: dict, value: str) -> None:
 def cmd_type(args) -> None:
     value = get_typed_text(args)
     state = read_state()
-    focus_game(state)
+    window = focus_game(state)
+    focus = focus_diagnostic(state, window)
     type_text(state, value)
-    print(f"Typed {len(value)} characters (content not logged)")
+    print(json.dumps({"typed_characters": len(value), "content_logged": False,
+                      "focus": focus}))
 
 
 def cmd_click(args) -> None:
     state = read_state()
     window = focus_game(state)
+    focus = focus_diagnostic(state, window)
     run_xdotool(state, "mousemove", "--window", window, str(args.x), str(args.y))
     run_xdotool(state, "click", str(args.button))
-    print(f"Clicked button {args.button} at client-relative ({args.x}, {args.y})")
+    print(json.dumps({"clicked": True, "button": args.button,
+                      "x": args.x, "y": args.y, "focus": focus}))
 
 
 def cmd_gm(args) -> None:
@@ -346,29 +375,125 @@ def cmd_gm(args) -> None:
     if args.expect is not None:
         hit = wait_for(state, args.timeout, event_types=("chat", "notice"), text=args.expect,
                        since=since, what=f"reply containing {args.expect!r}")
-        print(json.dumps(hit))
+        result = {"dispatch": hit}
+        if args.wait_state:
+            try:
+                observed = wait_for(
+                    state, (args.timeout if args.completion_timeout is None
+                            else args.completion_timeout),
+                    state_expr=args.wait_state, what="state after GM command")
+            except SystemExit as exc:
+                if exc.code == EXIT_TIMEOUT:
+                    print(json.dumps({"dispatch": hit, "completion": "timeout",
+                                      "expected_state": args.wait_state}), file=sys.stderr)
+                raise
+            result["completion"] = observed
+        else:
+            result["completion"] = "not_requested"
+        print(json.dumps(result))
 
 
 def cmd_act(args) -> None:
     """Submit a semantic action through the client's own packet code; result is an `act` event."""
-    state = read_state()
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    # flock is released by the OS if this command exits or is killed. Holding it
+    # through the result wait serializes writers to the client's single mailbox.
+    lock_file = (STATE_DIR / "act.lock").open("a")
+    try:
+        try:
+            fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            die("another semantic action is still in progress")
+
+        state = read_state()
+        result = dispatch_action(state, args.action, args.arg, args.timeout,
+                                 args.wait_state, args.completion_timeout)
+        print(json.dumps(result))
+        if result["completion"] == "not_dispatched":
+            sys.exit(1)
+    finally:
+        lock_file.close()
+
+
+def dispatch_action(state: dict, action: str, argv: list[str], timeout: float,
+                    wait_state: str | None = None,
+                    completion_timeout: float | None = None) -> dict:
+    """Dispatch one request while the caller owns the mailbox lock."""
     since = last_seq()
-    act_id = f"a{int(time.time() * 1000)}"
-    arg = " ".join(args.arg)
-    if args.action == "move" and len(args.arg) == 2:
-        args.timeout = max(args.timeout, int(args.arg[1]) / 1000 + 5)
-    tmp = STATE_DIR / "act.tmp"
-    tmp.write_text(f"{act_id} {args.action} {arg}\n")
+    act_id = f"a{uuid.uuid4().hex}"
+    arg = " ".join(argv)
+    if action == "move" and len(argv) == 2:
+        timeout = max(timeout, int(argv[1]) / 1000 + 5)
+    tmp = STATE_DIR / f"act.{act_id}.tmp"
+    tmp.write_text(f"{act_id} {action} {arg}\n")
     tmp.replace(STATE_DIR / "act.txt")
     try:
-        hit = wait_for(state, args.timeout, event_types=("act",), text=act_id,
-                       since=since, what=f"result of act {args.action}")
+        hit = wait_for(state, timeout, event_types=("act",), text=act_id,
+                       since=since, what=f"result of act {action}")
+    except BaseException:
+        cancel_tmp = STATE_DIR / f"cancel.{act_id}.tmp"
+        cancel_tmp.write_text(f"{act_id}\n")
+        cancel_tmp.replace(STATE_DIR / "cancel.txt")
+        raise
     finally:
-        # An unclaimed request must not run when the client next enters the game.
         (STATE_DIR / "act.txt").unlink(missing_ok=True)
-    print(json.dumps(hit))
+    result = {"dispatch": hit}
     if not hit.get("ok"):
-        sys.exit(1)
+        result["completion"] = "not_dispatched"
+        return result
+    if wait_state:
+        try:
+            result["completion"] = wait_for(
+                state, (timeout if completion_timeout is None else completion_timeout),
+                state_expr=wait_state,
+                what=f"state after act {action}")
+        except SystemExit as exc:
+            if exc.code == EXIT_TIMEOUT:
+                print(json.dumps({"dispatch": hit, "completion": "timeout",
+                                  "expected_state": wait_state}), file=sys.stderr)
+            raise
+    else:
+        result["completion"] = "not_requested"
+    return result
+
+
+def cmd_batch(args) -> None:
+    """Run a small JSON action list under one mailbox lock, stopping on first failure."""
+    try:
+        actions = json.load(sys.stdin)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        die("batch input must be a JSON array of action arrays")
+    if not isinstance(actions, list) or not 1 <= len(actions) <= 10:
+        die("batch must contain between 1 and 10 actions")
+    allowed = {"npc-talk", "npc-choose", "use-item", "equip", "unequip", "window",
+               "move", "jump", "portal", "attack", "party-create",
+               "party-leave", "party-invite", "party-accept"}
+    for item in actions:
+        if (not isinstance(item, list) or not item or not isinstance(item[0], str)
+                or item[0] not in allowed
+                or not all(isinstance(part, (str, int)) and not isinstance(part, bool)
+                           for part in item)):
+            die("each batch entry must be [action, ...string_or_integer_args]")
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    lock_file = (STATE_DIR / "act.lock").open("a")
+    results = []
+    try:
+        try:
+            fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            die("another semantic action is still in progress")
+        state = read_state()
+        for item in actions:
+            action = str(item[0])
+            result = dispatch_action(state, action, [str(x) for x in item[1:]],
+                                     args.timeout, None, None)
+            results.append(result)
+            if result["completion"] == "not_dispatched":
+                print(json.dumps({"results": results, "stopped_at": len(results) - 1}))
+                raise SystemExit(1)
+    finally:
+        lock_file.close()
+    print(json.dumps({"results": results, "completed": len(results)}))
 
 
 def cmd_bundle(args) -> None:
@@ -472,6 +597,25 @@ def load_state_json() -> dict | None:
         return None
 
 
+def snapshot_diagnostic(snapshot: dict | None, session: dict) -> dict:
+    if snapshot is None:
+        health = "stalled" if time.time() - session.get("client_started_epoch", time.time()) > 30.0 else "waiting"
+        return {"health": health, "reason": "no snapshot has been written"}
+    if snapshot.get("session_id") != session.get("session_id"):
+        return {"health": "stale", "reason": "snapshot belongs to another client session"}
+    if snapshot.get("schema") != 1 or not isinstance(snapshot.get("seq"), int):
+        return {"health": "incompatible", "reason": "missing or unsupported snapshot schema"}
+    try:
+        age = max(0.0, time.time() - (STATE_DIR / "state.json").stat().st_mtime)
+    except OSError:
+        return {"health": "waiting", "reason": "snapshot file is unavailable"}
+    health = "healthy" if age <= 2.0 else "stalled"
+    return {"health": health, "age_seconds": round(age, 3),
+            "session_id": snapshot["session_id"], "seq": snapshot["seq"],
+            "progress": snapshot.get("progress"), "screen": snapshot.get("screen"),
+            "map": snapshot.get("map")}
+
+
 def lookup(data, path: str):
     for part in path.split("."):
         try:
@@ -520,16 +664,32 @@ def wait_for(state: dict, timeout: float, *, state_expr: str | None = None,
              since: int = 0, what: str = "condition") -> dict:
     """Return the match; exit 3 on timeout (printing last state/event), 2 if the client is gone."""
     deadline = time.monotonic() + timeout
+    expected_session = state.get("session_id")
     while True:
-        if state_expr is not None and state_matches(state_expr, load_state_json()):
-            return {"state": state_expr}
-        if event_types is not None or text is not None:
-            for event in read_events():
-                if event["seq"] > since and event_matches(event, event_types, text):
-                    return event
+        snapshot = load_state_json()
+        if snapshot and snapshot.get("session_id") != expected_session:
+            print(f"Snapshot belongs to a different client session while waiting for {what}", file=sys.stderr)
+            raise SystemExit(EXIT_GONE)
+        if snapshot is not None and snapshot.get("schema") != 1:
+            print("Client snapshot schema is missing or unsupported", file=sys.stderr)
+            raise SystemExit(EXIT_GONE)
         if not client_alive(state):
             print(f"Client exited while waiting for {what}", file=sys.stderr)
             raise SystemExit(EXIT_GONE)
+        diagnostic = snapshot_diagnostic(snapshot, state)
+        if diagnostic["health"] == "stalled":
+            print(f"Client loop stalled while waiting for {what}: {json.dumps(diagnostic)}", file=sys.stderr)
+            raise SystemExit(EXIT_GONE)
+        if diagnostic["health"] == "incompatible":
+            print(f"Client snapshot is incompatible: {json.dumps(diagnostic)}", file=sys.stderr)
+            raise SystemExit(EXIT_GONE)
+        if state_expr is not None and state_matches(state_expr, snapshot):
+            return {"state": state_expr}
+        if event_types is not None or text is not None:
+            for event in read_events():
+                if (event.get("session_id") == expected_session and event["seq"] > since
+                        and event_matches(event, event_types, text)):
+                    return event
         if time.monotonic() >= deadline:
             events = read_events()
             print(json.dumps({"timeout": what, "last_state": load_state_json(),
@@ -547,14 +707,22 @@ def cmd_wait(args) -> None:
             die("Client log not available")
         deadline = time.monotonic() + args.timeout
         while True:
+            if not client_alive(state):
+                print(f"Client exited while waiting for {args.pattern!r}", file=sys.stderr)
+                raise SystemExit(EXIT_GONE)
+            snapshot = load_state_json()
+            if snapshot and snapshot.get("session_id") != state.get("session_id"):
+                print("Snapshot belongs to a different client session", file=sys.stderr)
+                raise SystemExit(EXIT_GONE)
+            diagnostic = snapshot_diagnostic(snapshot, state)
+            if diagnostic["health"] in ("stalled", "incompatible"):
+                print(f"Client snapshot is {diagnostic['health']}: {json.dumps(diagnostic)}", file=sys.stderr)
+                raise SystemExit(EXIT_GONE)
             with CLIENT_LOG.open("rb") as inp:
                 inp.seek(args.after_offset)
                 if args.pattern in inp.read().decode("utf-8", "replace"):
                     print(f"Matched in client log: {args.pattern!r}")
                     return
-            if not client_alive(state):
-                print(f"Client exited while waiting for {args.pattern!r}", file=sys.stderr)
-                raise SystemExit(EXIT_GONE)
             if time.monotonic() >= deadline:
                 print(f"Timed out waiting for {args.pattern!r} after {args.timeout}s", file=sys.stderr)
                 raise SystemExit(EXIT_TIMEOUT)
@@ -704,12 +872,21 @@ def main() -> None:
     sp.add_argument("--stdin", action="store_true", help="Read command from stdin")
     sp.add_argument("--expect", help="Wait for a chat/notice event containing this text (exit 3 on timeout)")
     sp.add_argument("--timeout", type=float, default=10.0, help="Seconds to wait with --expect")
+    sp.add_argument("--completion-timeout", type=float,
+                    help="Seconds to wait for --wait-state (defaults to --timeout)")
+    sp.add_argument("--wait-state", help="After --expect, wait for a state predicate")
     sp.set_defaults(func=cmd_gm)
-    sp = sub.add_parser("act", help="Semantic action: npc-talk <oid>, npc-choose next|yes|no|prev|close|<n>, use-item <slot>, equip <slot>, unequip <slot>, move left|right|up|down <ms>, jump, portal, attack")
-    sp.add_argument("action", choices=["npc-talk", "npc-choose", "use-item", "equip", "unequip", "move", "jump", "portal", "attack", "party-create", "party-leave", "party-invite", "party-accept"])
+    sp = sub.add_parser("act", help="Semantic action: npc-talk <oid>, npc-choose next|yes|no|prev|close|<n>, use-item <slot>, equip <slot>, unequip <slot>, window <stats|items|equipment> <open|close>, move left|right|up|down <ms>, jump, portal, attack")
+    sp.add_argument("action", choices=["npc-talk", "npc-choose", "use-item", "equip", "unequip", "window", "move", "jump", "portal", "attack", "party-create", "party-leave", "party-invite", "party-accept"])
     sp.add_argument("arg", nargs="*")
     sp.add_argument("--timeout", type=float, default=5.0)
+    sp.add_argument("--completion-timeout", type=float, help="Seconds to wait for --wait-state (defaults to --timeout)")
+    sp.add_argument("--wait-state", help="After dispatch, wait for a state predicate (for example map_id==100000000)")
     sp.set_defaults(func=cmd_act)
+    sp = sub.add_parser("batch", help="Run 1–10 semantic actions from a JSON array on stdin under one lock")
+    sp.add_argument("--timeout", type=float, default=5.0,
+                    help="Seconds per action result (timed moves extend this to their duration)")
+    sp.set_defaults(func=cmd_batch)
     sp = sub.add_parser("bundle", help="Write a diagnostic bundle directory (meta, state, events, log tail, optional screenshot)")
     sp.add_argument("--out", help="Output directory (default: <session dir>/bundle-<time>)")
     sp.add_argument("--events", type=int, default=100)

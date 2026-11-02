@@ -17,6 +17,7 @@
 //////////////////////////////////////////////////////////////////////////////////
 #include "../../HeadlessState.h"
 #include "MessagingHandlers.h"
+#include "../../IO/UI.h"
 
 #include "../../Data/ItemData.h"
 #include "../../Gameplay/Stage.h"
@@ -27,6 +28,17 @@
 
 namespace ms
 {
+	void PlayerHintHandler::handle(InPacket& recv) const
+	{
+		std::string message = recv.read_string();
+		int16_t width = recv.read_short();
+		int16_t height = recv.read_short();
+		recv.read_byte(); // Display flag.
+
+		UI::get().show_hint(message, width, height);
+		HeadlessState::event("hint_shown", ",\"text\":\"" + HeadlessState::escape(message) + "\",\"width\":" + std::to_string(width) + ",\"height\":" + std::to_string(height));
+	}
+
 	// Modes:
 	// 0 - Item(0) or Meso(1) 
 	// 3 - Exp gain

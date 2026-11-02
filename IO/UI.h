@@ -21,6 +21,10 @@
 
 #include "Components/ScrollingNotice.h"
 #include "Components/Textfield.h"
+#include "../Graphics/Geometry.h"
+#include "../Graphics/Text.h"
+
+#include <chrono>
 
 namespace ms
 {
@@ -72,6 +76,8 @@ namespace ms
 
 		void set_scrollnotice(const std::string &notice);
 
+		void show_hint(const std::string &message, int16_t width, int16_t height);
+
 		void focus_textfield(Textfield *textfield);
 
 		void remove_textfield();
@@ -114,6 +120,17 @@ namespace ms
 		Keyboard keyboard;
 		Cursor cursor;
 		ScrollingNotice scrollingnotice;
+		Text hint_text;
+		ColorBox hint_background;
+		std::chrono::steady_clock::time_point hint_expires;
+		Text death_text;
+		ColorBox death_background;
+		bool hint_active = false;
+		mutable bool hint_rendered = false;
+		bool in_game = false;
+		bool death_prompt = false;
+		bool death_request_pending = false;
+		mutable bool death_prompt_rendered = false;
 
 		Optional<Textfield> focusedtextfield;
 		std::unordered_map<int32_t, bool> is_key_down;

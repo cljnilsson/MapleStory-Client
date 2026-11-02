@@ -5,7 +5,8 @@ HeavenClient is a custom, made-from-scratch game client for Maplestory v83.
 ## Headless CLI login (Linux)
 
 After building `build/HeavenClient` and starting the game server, launch the
-offscreen client with `python ms_headless.py start`. The script uses the project
+offscreen client with `python ms_headless.py start`. Headless launches always
+set `ALSOFT_DRIVERS=null` so OpenAL cannot use a host audio device. The script uses the project
 directory containing `ms_headless.py` by default. It requires Xvfb, xauth, and
 xdotool; `python ms_headless.py stop` closes the session.
 
@@ -24,6 +25,20 @@ the first available world and its first channel, then uses the currently
 selected character. Character creation, PIC prompts, and other notices still
 need manual controls. Rebuild the client after updating it, because an older
 binary does not emit the `HEADLESS_STATE` markers used by `play`.
+
+The headless snapshot (`state.json`) exposes schema/build/asset identities,
+session ID, snapshot sequence, main-loop progress, uptime, screen, map and
+supported semantic actions. In-game snapshots also report whether the stats,
+item inventory and equipment inventory windows are active (`ui.stats_open`,
+`ui.item_inventory_open`, `ui.equip_inventory_open`), so `wait --state` or
+`act --wait-state` can verify window actions. Use `act window stats open` (or
+`items` / `equipment`) and `act window <name> close` to control these windows
+without depending on key bindings. `status` reports
+snapshot health. Event records
+carry the session ID; malformed and unhandled server packets produce
+`packet_error` events with opcode, packet length, parser offset and reason, but
+never packet contents. Wait commands reject events from another session and
+report a disconnected client, a stalled loop or a normal timeout separately.
 
 ## Supported versions
 

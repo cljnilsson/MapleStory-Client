@@ -33,6 +33,13 @@ namespace ms
 		void show_status(Color::Name color, const std::string& message) const;
 	};
 
+	// Display a timed player hint.
+	// Opcode: PLAYER_HINT(214)
+	class PlayerHintHandler : public PacketHandler
+	{
+		void handle(InPacket& recv) const override;
+	};
+
 	// Show a server message
 	// Opcode: SERVER_MESSAGE(68)
 	class ServerMessageHandler : public PacketHandler

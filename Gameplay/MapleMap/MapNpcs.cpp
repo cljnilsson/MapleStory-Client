@@ -52,6 +52,11 @@ namespace ms
 
 	void MapNpcs::remove(int32_t oid)
 	{
+		npcs.remove(oid);
+	}
+
+	void MapNpcs::lose_control(int32_t oid)
+	{
 		if (auto npc = npcs.get(oid))
 			npc->deactivate();
 	}

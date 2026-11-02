@@ -21,6 +21,10 @@
 #include "UIStateGame.h"
 #include "UIStateLogin.h"
 #include "Window.h"
+#include "../Constants.h"
+#include "../HeadlessState.h"
+#include "../Gameplay/Stage.h"
+#include "../Net/Packets/GameplayPackets.h"
 
 #include "UITypes/UIChannel.h"
 #include "UITypes/UIChat.h"
@@ -39,6 +43,9 @@ namespace ms
 	{
 		state = std::make_unique<UIStateNull>();
 		enabled = true;
+		death_text = Text(Text::Font::A13B, Text::Alignment::CENTER, Color::Name::WHITE,
+			"You have fallen. Press Enter to return to town.");
+		death_background = ColorBox(360, 72, Color::Name::BLACK, 0.9f);
 	}
 
 	void UI::init()
@@ -52,6 +59,30 @@ namespace ms
 		state->draw(alpha, cursor.get_position());
 
 		scrollingnotice.draw(alpha);
+		if (hint_active)
+		{
+			auto pos = Point<int16_t>((Constants::Constants::get().get_viewwidth() - 400) / 2, 52);
+			hint_background.draw(pos);
+			hint_text.draw(pos + Point<int16_t>(200, 5));
+			if (!hint_rendered)
+			{
+				hint_rendered = true;
+				HeadlessState::event("hint_rendered");
+			}
+		}
+		if (death_prompt)
+		{
+			constexpr int16_t width = 360;
+			constexpr int16_t height = 72;
+			auto pos = Point<int16_t>((Constants::Constants::get().get_viewwidth() - width) / 2, 240);
+			death_background.draw(pos);
+			death_text.draw(pos + Point<int16_t>(width / 2, 28));
+			if (!death_prompt_rendered)
+			{
+				death_prompt_rendered = true;
+				HeadlessState::event("death_prompt_rendered");
+			}
+		}
 
 		cursor.draw(alpha);
 	}
@@ -61,6 +92,28 @@ namespace ms
 		state->update();
 
 		scrollingnotice.update();
+		if (in_game)
+		{
+			bool dead = Stage::get().get_player().get_stats().get_stat(MapleStat::Id::HP) == 0;
+			if (dead && !death_prompt)
+			{
+				death_prompt = true;
+				death_request_pending = false;
+				death_prompt_rendered = false;
+				HeadlessState::event("death_prompt_shown");
+			}
+			else if (!dead && death_prompt)
+			{
+				death_prompt = false;
+				death_request_pending = false;
+				HeadlessState::event("death_prompt_cleared");
+			}
+		}
+		if (hint_active && std::chrono::steady_clock::now() >= hint_expires)
+		{
+			hint_active = false;
+			HeadlessState::event("hint_expired");
+		}
 
 		cursor.update();
 	}
@@ -77,6 +130,7 @@ namespace ms
 
 	void UI::change_state(State id)
 	{
+		in_game = id == State::GAME;
 		switch (id)
 		{
 		case State::LOGIN:
@@ -174,6 +228,17 @@ namespace ms
 
 	void UI::send_key(int32_t keycode, bool pressed)
 	{
+		if (death_prompt && pressed)
+		{
+			if ((keycode == GLFW_KEY_ENTER || keycode == GLFW_KEY_KP_ENTER) && !death_request_pending)
+			{
+				ChangeMapPacket(true, 0, "", false).dispatch();
+				death_request_pending = true;
+				HeadlessState::event("death_revive_requested");
+			}
+			return;
+		}
+
 		if ((is_key_down[GLFW_KEY_LEFT_ALT] || is_key_down[GLFW_KEY_RIGHT_ALT]) &&
 			(is_key_down[GLFW_KEY_ENTER] || is_key_down[GLFW_KEY_KP_ENTER]))
 		{
@@ -376,6 +441,18 @@ namespace ms
 	void UI::set_scrollnotice(const std::string &notice)
 	{
 		scrollingnotice.setnotice(notice);
+	}
+
+	void UI::show_hint(const std::string &message, int16_t width, int16_t height)
+	{
+		width = std::max<int16_t>(120, std::min<int16_t>(width, Constants::Constants::get().get_viewwidth() - 20));
+		height = std::max<int16_t>(24, std::min<int16_t>(height, 120));
+		hint_text = Text(Text::Font::A12M, Text::Alignment::CENTER, Color::Name::WHITE, message,
+			static_cast<uint16_t>(width - 16));
+		hint_background = ColorBox(width, height, Color::Name::BLACK, 0.85f);
+		hint_active = true;
+		hint_rendered = false;
+		hint_expires = std::chrono::steady_clock::now() + std::chrono::seconds(5);
 	}
 
 	void UI::focus_textfield(Textfield *tofocus)

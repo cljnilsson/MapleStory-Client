@@ -134,7 +134,8 @@ namespace ms
 			statsentry.petids.push_back(recv.read_long());
 
 		statsentry.stats[MapleStat::Id::LEVEL] = recv.read_byte(); // TODO: Change to recv.read_short(); to increase level cap
-		statsentry.stats[MapleStat::Id::JOB] = recv.read_short();
+		const uint16_t job = recv.read_short();
+		statsentry.stats[MapleStat::Id::JOB] = job;
 		statsentry.stats[MapleStat::Id::STR] = recv.read_short();
 		statsentry.stats[MapleStat::Id::DEX] = recv.read_short();
 		statsentry.stats[MapleStat::Id::INT] = recv.read_short();
@@ -144,7 +145,21 @@ namespace ms
 		statsentry.stats[MapleStat::Id::MP] = recv.read_short();
 		statsentry.stats[MapleStat::Id::MAXMP] = recv.read_short();
 		statsentry.stats[MapleStat::Id::AP] = recv.read_short();
-		statsentry.stats[MapleStat::Id::SP] = recv.read_short();
+		if (job == 2001 || job == 2200 || (job >= 2210 && job <= 2218))
+		{
+			const uint8_t count = recv.read_byte();
+			uint16_t totalsp = 0;
+			for (uint8_t i = 0; i < count; ++i)
+			{
+				recv.read_byte(); // remaining SP book index
+				totalsp += recv.read_byte();
+			}
+			statsentry.stats[MapleStat::Id::SP] = totalsp;
+		}
+		else
+		{
+			statsentry.stats[MapleStat::Id::SP] = recv.read_short();
+		}
 		statsentry.exp = recv.read_int();
 		statsentry.stats[MapleStat::Id::FAME] = recv.read_short();
 

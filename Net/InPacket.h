@@ -37,6 +37,9 @@ namespace ms
 		bool available() const;
 		// Return the remaining length in bytes
 		size_t length() const;
+		// Return parser offsets for structured diagnostics.
+		size_t position() const;
+		size_t packet_length() const;
 		// Skip a number of bytes (by increasing the offset)
 		void skip(size_t count);
 
