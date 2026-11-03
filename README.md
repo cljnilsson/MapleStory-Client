@@ -22,7 +22,13 @@ the account ID. `enter-game` is an alias for `play`. The command waits for
 client-reported screen transitions. It exits nonzero on rejection or timeout
 without using fixed login delays. It chooses
 the first available world and its first channel, then uses the currently
-selected character. Character creation, PIC prompts, and other notices still
+selected character. Add `--character PortWarrior` to select an exact name through
+the character-selection controller before entering. Selection failure stops the
+command before Enter. At character selection, `state --field login` lists character
+IDs/names, `selected_index`, `selected_name`, and `pic_mode`;
+`act character-choose PortWarrior --wait-state login.selected_name==PortWarrior`
+changes the selection without entering the game, including across pages.
+Character creation, PIC prompts, and other notices still
 need manual controls. Rebuild the client after updating it, because an older
 binary does not emit the `HEADLESS_STATE` markers used by `play`.
 
@@ -196,3 +202,99 @@ If you feel obligated to donate, to further help and support all parties involve
 Please remember this is ONLY for the HeavenClient development and will only be used in the support of helping further develop the client. *Also please remember to support Nexon as this is not meant to replace anything Nexon offers*
 
 Another important note to remember is that HeavenClient is a free open-sourced client developed for personal use. Do NOT pay for any services requested by anyone in regards to this client. It will always remain open and free of charge. There is no intent to publish this code with any payment in mind. If that ever changes, donations and disclaimers for donations will be removed.
+
+M161 world/channel selection (build and offline verification only):
+```sh
+python ms_headless.py state --field login
+python ms_headless.py act world-choose 0 --wait-state login.world_id==0
+python ms_headless.py act channel-choose 2 --wait-state login.channel==2
+python ms_headless.py play --world 0 --channel 2 --character PortWarrior
+```
+World IDs come from `login.worlds`; channel numbers are 1-based. World selection
+opens the channel screen. Channel selection alone does not enter it; `play`
+confirms the selection and presses Enter. Only worlds supported by the existing
+UI (IDs 0–4 with available button art) can be selected. Snapshots expose all
+advertised world names, IDs and channel counts. Live verification remains open.
+
+`play --world --channel` also applies both choices when resuming on the channel
+screen; a rejected selection stops before Enter.
+
+Login modal observations are available on every screen through `state --field
+login_dialog`: `pic_keyboard` and `notice` are booleans; `message_id` is the
+`UILoginNotice::Message` numeric value, or null when no notice is active.
+For example, `wait --state login_dialog.pic_keyboard==true` waits for the PIC
+keyboard, and `wait --state login_dialog.notice==true` waits for a login notice.
+PIC contents are never included. World/channel/character selection actions reject
+while either modal is active; dismiss the dialog through its existing UI first.
+These observations are build-verified only; live PIC acceptance remains open.
+
+`python ms_headless.py pic` prompts for the PIC without echo; `pic --stdin`
+reads it from stdin for automation. This command requires an already open PIC
+keyboard on character selection and accepts 6–16 ASCII digits, matching the
+numeric UI. It submits through the keyboard's existing OK callback, including
+registration/confirmation callbacks when those dialogs are open. It does not
+open the dialog or automatically register a PIC.
+
+The PIC is never a CLI argument or included in snapshot/action events. The
+request uses an owner-only temporary mailbox file in the private session directory;
+the client removes it before dispatch, and the CLI cleans up on timeout.
+`pic --wait-state screen==in_game` can observe entry after submission; dispatch
+success alone does not confirm server acceptance. Wrong-PIC and first-registration
+flows still require live verification. No PIC live test has been run for this slice.
+
+`act login-notice confirm` acknowledges the active login notice through its UI
+callback (including the PIC registration prompt). `act login-notice cancel`
+chooses No only when that notice offers a cancel button; otherwise it rejects.
+Snapshots expose `login_dialog.can_cancel`. Use
+`--wait-state login_dialog.pic_keyboard==true` when confirming registration,
+or `--wait-state login_dialog.notice==false` when dismissing an error.
+These actions require an active login notice outside the field and reject other
+dialog classes sharing its UI slot. Dispatch success does not prove server
+acceptance; registration and wrong-PIC flows remain unverified live.
+
+`play` uses the guarded `character-enter` action for no-PIC entry and waits for
+the in-game screen event. Rejected entry stops immediately without sending Return.
+
+`act character-enter` activates the selected character through the same callback
+as the Select button. It requires an active character-selection screen, an
+available character, no active PIC/login notice, and no arguments. For PIC mode
+1, follow with `pic` after `--wait-state login_dialog.pic_keyboard==true`.
+For registration (mode 0), confirm the notice first with `act login-notice confirm`;
+the existing registration/confirmation callbacks handle subsequent submissions.
+For mode 2, use `--wait-state screen==in_game` to observe entry. Dispatch success
+only means the callback ran; server acceptance remains a separate observation.
+
+`act character-back --wait-state screen==world_select` returns from character
+selection through the Back button callback, including when the character list is
+empty. It accepts no arguments and rejects while a login/PIC dialog owns input.
+The screen event follows the restored world controller (world or channel selection);
+use `play --world <id> --channel <number>` to select and enter again.
+
+`act pic-cancel` uses the active PIC keyboard cancellation callback. It rejects
+keyboards without one; `login_dialog.pic_can_cancel` reports availability. This
+action accepts no arguments and can be used in a batch before selecting again.
+
+`login_dialog.modal` reports any active dialog in the shared login-notice slot,
+including quit, key-selection and class-confirmation dialogs, and the separate
+key-confirmation slot. Selection, entry
+and PIC actions reject while this flag is true; `login-notice` still responds
+only to an ordinary login notice. This prevents actions behind other dialogs.
+
+The in-game Change Channel window now sends the v83 channel request and logs the
+character into the redirected channel. It uses the last advertised channel count
+(up to the window's 20-channel layout) and prevents selecting the current channel.
+This path still needs live transfer verification; a dedicated headless channel
+change action and outcome observation are not yet available.
+
+M161 channel-change automation: `act channel-change 2` (also accepted in a batch)
+requests a 1-based advertised channel through the same controller as the channel
+window. It rejects the current/unavailable channel, active movement, NPC/login
+dialogs and Cash Shop. Dispatch acknowledgement is not transfer completion.
+In-game `navigation` exposes `world_id`, `configured_channel`, `pending_channel`
+(0 means no outstanding target), and `field_entry_seq`, incremented after each
+completed field transition. Configured channel changes on the redirect response;
+only a later field-entry sequence can establish that a field loaded. An ignored
+request can leave the pending target visible; a retry replaces it.
+Known blocker: full character-data field entry currently requires UICharSelect,
+which is absent during an in-game transfer. Transfer reinitialization must be
+fixed before claiming live channel-change support.

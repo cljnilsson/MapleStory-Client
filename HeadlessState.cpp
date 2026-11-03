@@ -1,4 +1,7 @@
 #include "HeadlessState.h"
+#include "Configuration.h"
+#include "IO/UITypes/UIChannel.h"
+#include "IO/UITypes/UICashShop.h"
 
 #include "Gameplay/Stage.h"
 #include "Gameplay/MapleMap/Npc.h"
@@ -9,6 +12,10 @@
 #include "IO/UITypes/UIItemInventory.h"
 #include "IO/UITypes/UINpcTalk.h"
 #include "IO/UITypes/UIStatsInfo.h"
+#include "IO/UITypes/UICharSelect.h"
+#include "IO/UITypes/UIWorldSelect.h"
+#include "IO/UITypes/UISoftKey.h"
+#include "IO/UITypes/UILoginNotice.h"
 #include "Net/Packets/InventoryPackets.h"
 #include "Net/Packets/GameplayPackets.h"
 #include "Net/Packets/NpcInteractionPackets.h"
@@ -35,6 +42,7 @@ namespace ms
 			bool dirty = true;
 			std::chrono::steady_clock::time_point last;
 			uint64_t snapshot_seq = 0;
+			uint64_t field_entry_seq = 0;
 			uint64_t progress = 0;
 			const auto process_start = std::chrono::steady_clock::now();
 			const std::string session_id = [] {
@@ -239,6 +247,7 @@ namespace ms
 				std::string id, name;
 				std::chrono::steady_clock::time_point until;
 			} hold;
+			std::string canceled_id;
 
 			void key_tap(int32_t action)
 			{
@@ -272,7 +281,10 @@ namespace ms
 				std::string id;
 				{ std::ifstream f(run); f >> id; }
 				std::remove(run.c_str());
-				if (hold.active && id == hold.id) cancel_hold("request canceled by caller");
+				if (hold.active && id == hold.id)
+					cancel_hold("request canceled by caller");
+				else
+					canceled_id = id;
 			}
 
 			// One request per file: "<id> <act> <arg>" written atomically by ms_headless.py.
@@ -291,12 +303,109 @@ namespace ms
 						arg.erase(0, 1);
 				}
 				std::remove(run.c_str());
+				if (id == canceled_id)
+				{
+					canceled_id.clear();
+					return act_result(id, name, false, "request canceled by caller");
+				}
+
+				if (name == "login-notice")
+				{
+					if (arg != "confirm" && arg != "cancel")
+						return act_result(id, name, false, "expected confirm or cancel");
+					auto notice = UI::get().get_element_checked<UILoginNotice>();
+					if (screen == "in_game" || !notice || !notice->is_active()
+						|| UI::get().is_element_active(UIElement::Type::LOGINNOTICE_CONFIRM))
+						return act_result(id, name, false, "login notice is not available");
+					bool ok = notice->respond(arg == "confirm");
+					dirty = true;
+					return act_result(id, name, ok, ok ? "" : "notice has no cancel button");
+				}
+				if (name == "pic-submit" || name == "pic-cancel")
+				{
+					auto keyboard = UI::get().get_element<UISoftKey>();
+					bool modal = (UI::get().is_element_active(UIElement::Type::LOGINNOTICE) || UI::get().is_element_active(UIElement::Type::LOGINNOTICE_CONFIRM));
+					if (screen != "character_select" || !keyboard || !keyboard->is_active()
+						|| modal)
+						return act_result(id, name, false, "PIC keyboard is not available");
+					if (name == "pic-cancel" && !arg.empty())
+						return act_result(id, name, false, "expected no arguments");
+					bool ok = name == "pic-cancel" ? keyboard->cancel() : keyboard->submit_digits(arg);
+					arg.clear();
+					dirty = true;
+					return act_result(id, name, ok, ok ? "" : (name == "pic-cancel" ? "PIC keyboard has no cancel callback" : "expected 6-16 ASCII digits"));
+				}
+				// Do not change the underlying selection while a modal owns input.
+				if (name == "world-choose" || name == "channel-choose" || name == "character-choose" || name == "character-enter" || name == "character-back")
+				{
+					auto keyboard = UI::get().get_element<UISoftKey>();
+					bool modal = (UI::get().is_element_active(UIElement::Type::LOGINNOTICE) || UI::get().is_element_active(UIElement::Type::LOGINNOTICE_CONFIRM));
+					if ((keyboard && keyboard->is_active()) || modal)
+						return act_result(id, name, false, "dismiss the active login dialog before selecting");
+				}
+
+				if (name == "world-choose" || name == "channel-choose")
+				{
+					auto selection = UI::get().get_element<UIWorldSelect>();
+					if ((screen != "world_select" && screen != "channel_select") || !selection || !selection->is_active())
+						return act_result(id, name, false, "world selection is not active");
+					int value;
+					try { size_t n; value = std::stoi(arg, &n); if (n != arg.size()) throw 0; }
+					catch (...) { return act_result(id, name, false, "expected numeric selection"); }
+					bool ok = name == "world-choose" ? selection->select_world(value) : selection->select_channel(value);
+					if (!ok) return act_result(id, name, false, "selection is unavailable");
+					dirty = true;
+					return act_result(id, name, true, "");
+				}
+				if (name == "character-back")
+				{
+					if (!arg.empty()) return act_result(id, name, false, "expected no arguments");
+					auto selection = UI::get().get_element<UICharSelect>();
+					if (screen != "character_select" || !selection || !selection->return_to_world())
+						return act_result(id, name, false, "character selection cannot return to world selection");
+					dirty = true;
+					return act_result(id, name, true, "");
+				}
+				if (name == "character-enter")
+				{
+					if (!arg.empty()) return act_result(id, name, false, "expected no arguments");
+					auto selection = UI::get().get_element<UICharSelect>();
+					if (screen != "character_select" || !selection || !selection->enter_character())
+						return act_result(id, name, false, "selected character is not available");
+					dirty = true;
+					return act_result(id, name, true, "");
+				}
+				if (name == "character-choose")
+				{
+					auto selection = UI::get().get_element<UICharSelect>();
+					if (screen != "character_select" || !selection || !selection->is_active())
+						return act_result(id, name, false, "character selection is not active");
+					if (!selection->select_character(arg))
+						return act_result(id, name, false, "no such character name");
+					dirty = true;
+					return act_result(id, name, true, "");
+				}
+				if (screen != "in_game")
+					return act_result(id, name, false, "action requires an in-game screen");
 
 				Inventory &inv = Stage::get().get_player().get_inventory();
 				auto num = [&](int32_t &out) {
 					try { size_t n; out = std::stoi(arg, &n); return n == arg.size(); } catch (...) { return false; }
 				};
 				int32_t n = 0;
+
+				if (name == "channel-change")
+				{
+					auto cashshop = UI::get().get_element<UICashShop>();
+					if (hold.active || dialog_open || (cashshop && cashshop->is_active())
+						|| UI::get().is_element_active(UIElement::Type::LOGINNOTICE)
+						|| UI::get().is_element_active(UIElement::Type::LOGINNOTICE_CONFIRM))
+						return act_result(id, name, false, "finish the active move or dialog first");
+					if (!num(n) || !UIChannel::request_channel(n))
+						return act_result(id, name, false, "channel unavailable or already current");
+					dirty = true;
+					return act_result(id, name, true, "");
+				}
 
 				if (name == "npc-talk")
 				{
@@ -551,6 +660,7 @@ namespace ms
 
 		void set_screen(const char *name)
 		{
+			if (std::string(name) == "in_game") ++field_entry_seq;
 			if (screen != name)
 				event("screen", std::string(",\"screen\":\"") + name + "\"");
 			screen = name;
@@ -564,18 +674,20 @@ namespace ms
 			if (!d)
 				return;
 
+			poll_cancel(d);
 			if (screen == "in_game")
 			{
 				int32_t previous_map = last_map;
 				track_changes();
 				if (previous_map != -1 && previous_map != last_map)
 					cancel_hold("map changed during move");
-				poll_cancel(d);
 				poll_hold();
-				poll_act(d);
 			}
 			else
 				cancel_hold("left in-game screen");
+			// Selection actions also use the request mailbox; field actions reject
+			// explicitly outside a field instead of waiting until a later login.
+			poll_act(d);
 
 			auto now = std::chrono::steady_clock::now();
 			if (!dirty && now - last < std::chrono::milliseconds(250))
@@ -592,8 +704,63 @@ namespace ms
 			  << "\",\"assets\":\"" << esc(asset_id && *asset_id ? asset_id : "runtime-nx") << "\""
 			  << ",\"session_id\":\"" << esc(session_id) << "\",\"seq\":" << ++snapshot_seq
 			  << ",\"progress\":" << progress << ",\"uptime_ms\":" << elapsed_ms
-			  << ",\"capabilities\":[\"npc-talk\",\"npc-choose\",\"use-item\",\"equip\",\"unequip\",\"window\",\"move\",\"jump\",\"portal\",\"attack\",\"party-create\",\"party-leave\",\"party-invite\",\"party-accept\"]"
+			  << ",\"capabilities\":[\"login-notice\",\"pic-submit\",\"pic-cancel\",\"world-choose\",\"channel-choose\",\"channel-change\",\"character-choose\",\"character-enter\",\"character-back\",\"npc-talk\",\"npc-choose\",\"use-item\",\"equip\",\"unequip\",\"window\",\"move\",\"jump\",\"portal\",\"attack\",\"party-create\",\"party-leave\",\"party-invite\",\"party-accept\"]"
 			  << ",\"screen\":\"" << screen << "\"";
+			if (screen == "in_game")
+				o << ",\"navigation\":{\"world_id\":" << int(Configuration::get().get_worldid())
+				  << ",\"configured_channel\":" << int(Configuration::get().get_channelid()) + 1
+				  << ",\"pending_channel\":" << UIChannel::get_pending_channel()
+				  << ",\"field_entry_seq\":" << field_entry_seq << '}';
+			// Dialog presence and notice IDs only: never serialize PIC entry text.
+			auto keyboard = UI::get().get_element<UISoftKey>();
+			auto notice = UI::get().get_element_checked<UILoginNotice>();
+			o << ",\"login_dialog\":{\"pic_keyboard\":" << (keyboard && keyboard->is_active() ? "true" : "false")
+			  << ",\"modal\":" << ((UI::get().is_element_active(UIElement::Type::LOGINNOTICE) || UI::get().is_element_active(UIElement::Type::LOGINNOTICE_CONFIRM)) ? "true" : "false")
+			  << ",\"pic_can_cancel\":" << (keyboard && keyboard->is_active() && keyboard->can_cancel() ? "true" : "false")
+			  << ",\"notice\":" << (notice && notice->is_active() ? "true" : "false")
+			  << ",\"can_cancel\":" << (notice && notice->is_active() && notice->can_cancel() ? "true" : "false")
+			  << ",\"message_id\":";
+			if (notice && notice->is_active()) o << notice->get_message();
+			else o << "null";
+			o << '}';
+			if (screen == "world_select" || screen == "channel_select")
+			{
+				if (auto selection = UI::get().get_element<UIWorldSelect>(); selection && selection->is_active())
+				{
+					o << ",\"login\":{\"world_id\":" << selection->get_selected_world()
+					  << ",\"channel\":" << selection->get_selected_channel() << ",\"worlds\":[";
+					bool comma = false;
+					for (const auto &world : selection->get_worlds())
+					{
+						if (comma) o << ',';
+						comma = true;
+						o << "{\"id\":" << int(world.wid) << ",\"name\":\"" << esc(world.name)
+						  << "\",\"channel_count\":" << int(world.channelcount) << '}';
+					}
+					o << "]}";
+				}
+			}
+			if (screen == "character_select")
+			{
+				if (auto selection = UI::get().get_element<UICharSelect>(); selection && selection->is_active())
+				{
+					o << ",\"login\":{\"pic_mode\":" << selection->get_pic_mode()
+					  << ",\"selected_index\":" << selection->get_selected_character();
+					const auto &characters = selection->get_characters();
+					const auto selected = selection->get_selected_character();
+					if (selected >= 0 && static_cast<size_t>(selected) < characters.size())
+						o << ",\"selected_name\":\"" << esc(characters[selected].stats.name) << "\"";
+					o << ",\"characters\":[";
+					bool comma = false;
+					for (const auto &character : selection->get_characters())
+					{
+						if (comma) o << ',';
+						comma = true;
+						o << "{\"id\":" << character.id << ",\"name\":\"" << esc(character.stats.name) << "\"}";
+					}
+					o << "]}";
+				}
+			}
 			if (screen == "in_game")
 			{
 				Player &p = Stage::get().get_player();

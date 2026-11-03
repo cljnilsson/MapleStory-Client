@@ -28,7 +28,7 @@
 namespace ms
 {
 	UILoginNotice::UILoginNotice(uint16_t message, std::function<void()> okhandler, std::function<void()> cancelhandler)
-			: okhandler(okhandler), cancelhandler(cancelhandler)
+			: message(message), okhandler(okhandler), cancelhandler(cancelhandler)
 	{
 		multiple = false;
 
@@ -74,6 +74,14 @@ namespace ms
 	UILoginNotice::UILoginNotice(uint16_t message) : UILoginNotice(message, []()
 	{})
 	{}
+
+	bool UILoginNotice::respond(bool confirm)
+	{
+		if (!is_active() || (!confirm && !multiple))
+			return false;
+		button_pressed(confirm ? Buttons::YES : Buttons::NO);
+		return true;
+	}
 
 	void UILoginNotice::send_key(int32_t keycode, bool pressed, bool escape)
 	{

@@ -26,6 +26,7 @@ namespace ms
 	{
 		Account parse_account(InPacket& recv);
 		World parse_world(InPacket& recv);
+		uint8_t channel_count(uint8_t world);
 		RecommendedWorld parse_recommended_world(InPacket& recv);
 		CharEntry parse_charentry(InPacket& recv);
 		StatsEntry parse_stats(InPacket& recv);

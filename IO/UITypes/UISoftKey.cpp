@@ -75,6 +75,24 @@ namespace ms
 	UISoftKey::UISoftKey(OkCallback ok_callback, CancelCallback cancel_callback) : UISoftKey(ok_callback, cancel_callback, "") {}
 	UISoftKey::UISoftKey(OkCallback ok_callback) : UISoftKey(ok_callback, []() {}) {}
 
+	bool UISoftKey::submit_digits(const std::string &digits)
+	{
+		if (!is_active() || digits.size() < MIN_SIZE || digits.size() > MAX_SIZE)
+			return false;
+		for (char digit : digits)
+			if (digit < '0' || digit > '9') return false;
+		entry.change_text(digits);
+		button_pressed(Buttons::OK);
+		return true;
+	}
+
+	bool UISoftKey::cancel()
+	{
+		if (!is_active() || !can_cancel()) return false;
+		button_pressed(Buttons::CANCEL);
+		return true;
+	}
+
 	void UISoftKey::draw(float inter) const
 	{
 		UIElement::draw(inter);

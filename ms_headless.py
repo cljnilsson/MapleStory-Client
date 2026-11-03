@@ -372,9 +372,11 @@ def cmd_gm(args) -> None:
     time.sleep(0.12)
     press(state, "Return")
     print("Submitted chat text via Enter -> type -> Enter (command content not logged)")
-    if args.expect is not None:
-        hit = wait_for(state, args.timeout, event_types=("chat", "notice"), text=args.expect,
-                       since=since, what=f"reply containing {args.expect!r}")
+    if args.expect is not None or args.wait_state:
+        hit = "not_requested"
+        if args.expect is not None:
+            hit = wait_for(state, args.timeout, event_types=("chat", "notice"), text=args.expect,
+                           since=since, what=f"reply containing {args.expect!r}")
         result = {"dispatch": hit}
         if args.wait_state:
             try:
@@ -391,6 +393,21 @@ def cmd_gm(args) -> None:
         else:
             result["completion"] = "not_requested"
         print(json.dumps(result))
+
+
+def cmd_pic(args) -> None:
+    """Read a PIC without putting it in argv, then use the locked private mailbox."""
+    if not args.stdin and not sys.stdin.isatty():
+        die("PIC prompt requires a terminal; use --stdin for protected input")
+    value = (sys.stdin.readline(18).rstrip("\r\n") if args.stdin
+             else getpass.getpass("PIC: "))
+    if not 6 <= len(value) <= 16 or any(c not in "0123456789" for c in value):
+        die("PIC must contain 6-16 ASCII digits")
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    STATE_DIR.chmod(0o700)
+    cmd_act(argparse.Namespace(action="pic-submit", arg=[value],
+                              timeout=args.timeout, wait_state=args.wait_state,
+                              completion_timeout=args.completion_timeout))
 
 
 def cmd_act(args) -> None:
@@ -425,9 +442,10 @@ def dispatch_action(state: dict, action: str, argv: list[str], timeout: float,
     if action == "move" and len(argv) == 2:
         timeout = max(timeout, int(argv[1]) / 1000 + 5)
     tmp = STATE_DIR / f"act.{act_id}.tmp"
-    tmp.write_text(f"{act_id} {action} {arg}\n")
-    tmp.replace(STATE_DIR / "act.txt")
     try:
+        with open(tmp, "x", opener=lambda path, flags: os.open(path, flags, 0o600)) as request:
+            request.write(f"{act_id} {action} {arg}\n")
+        tmp.replace(STATE_DIR / "act.txt")
         hit = wait_for(state, timeout, event_types=("act",), text=act_id,
                        since=since, what=f"result of act {action}")
     except BaseException:
@@ -436,6 +454,7 @@ def dispatch_action(state: dict, action: str, argv: list[str], timeout: float,
         cancel_tmp.replace(STATE_DIR / "cancel.txt")
         raise
     finally:
+        tmp.unlink(missing_ok=True)
         (STATE_DIR / "act.txt").unlink(missing_ok=True)
     result = {"dispatch": hit}
     if not hit.get("ok"):
@@ -465,7 +484,7 @@ def cmd_batch(args) -> None:
         die("batch input must be a JSON array of action arrays")
     if not isinstance(actions, list) or not 1 <= len(actions) <= 10:
         die("batch must contain between 1 and 10 actions")
-    allowed = {"npc-talk", "npc-choose", "use-item", "equip", "unequip", "window",
+    allowed = {"login-notice", "pic-cancel", "world-choose", "channel-choose", "channel-change", "character-choose", "character-enter", "character-back", "npc-talk", "npc-choose", "use-item", "equip", "unequip", "window",
                "move", "jump", "portal", "attack", "party-create",
                "party-leave", "party-invite", "party-accept"}
     for item in actions:
@@ -787,6 +806,7 @@ def cmd_play(args) -> None:
         if not screen:
             screen = wait_for_screen(log, state, deadline)
         window = focus_game(state)
+        world_selected = False
         while screen[0] != "in_game":
             name, count, pic = screen
             if name == "login":
@@ -801,12 +821,51 @@ def cmd_play(args) -> None:
                 if args.username:
                     replace_login_field(state, window, 500, 250, args.username)
                 replace_login_field(state, window, 500, 280, password)
+            elif name in ("world_select", "channel_select"):
+                choose_world = (getattr(args, "world", None) is not None
+                                and not world_selected)
+                option = "world" if choose_world else "channel"
+                value = getattr(args, option, None) if (choose_world or name == "channel_select") else None
+                if value is not None:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        die(f"Timed out before {option} selection")
+                    field = "world_id" if option == "world" else "channel"
+                    cmd_act(argparse.Namespace(
+                        action=f"{option}-choose", arg=[str(value)],
+                        timeout=remaining, completion_timeout=remaining,
+                        wait_state=f"login.{field}=={value}"))
+                    # Choosing a world opens the channel screen itself.
+                    if option == "world":
+                        world_selected = True
+                        if name == "world_select":
+                            screen = wait_for_screen(log, state, deadline, previous=name)
+                        # On an existing channel screen there is no screen-change
+                        # event. Revisit it to choose the channel before Enter.
+                        continue
             elif name == "character_select":
                 if count == 0:
                     die("No characters available; create one before using play")
                 if pic != 2:
                     die(f"Character selection requires a PIC (mode {pic}); use the manual CLI controls")
-            press(state, "Return")
+                if getattr(args, "character", None):
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        die("Timed out before character selection")
+                    cmd_act(argparse.Namespace(
+                        action="character-choose", arg=[args.character],
+                        timeout=remaining, completion_timeout=remaining,
+                        wait_state=f"login.selected_name=={args.character}"))
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    die("Timed out before character entry")
+                cmd_act(argparse.Namespace(
+                    action="character-enter", arg=[], timeout=remaining,
+                    completion_timeout=remaining, wait_state=None))
+            else:
+                die(f"Cannot advance from screen {name}")
+            if name != "character_select":
+                press(state, "Return")
             screen = wait_for_screen(log, state, deadline, previous=name)
         print(json.dumps({"screen": "in_game", "client_running": True,
                           "client_log": str(CLIENT_LOG)}))
@@ -871,18 +930,24 @@ def main() -> None:
     sp.add_argument("text", nargs="?")
     sp.add_argument("--stdin", action="store_true", help="Read command from stdin")
     sp.add_argument("--expect", help="Wait for a chat/notice event containing this text (exit 3 on timeout)")
-    sp.add_argument("--timeout", type=float, default=10.0, help="Seconds to wait with --expect")
+    sp.add_argument("--timeout", type=float, default=10.0, help="Seconds to wait with --expect or --wait-state")
     sp.add_argument("--completion-timeout", type=float,
                     help="Seconds to wait for --wait-state (defaults to --timeout)")
-    sp.add_argument("--wait-state", help="After --expect, wait for a state predicate")
+    sp.add_argument("--wait-state", help="Wait for a state predicate after submitting chat")
     sp.set_defaults(func=cmd_gm)
-    sp = sub.add_parser("act", help="Semantic action: npc-talk <oid>, npc-choose next|yes|no|prev|close|<n>, use-item <slot>, equip <slot>, unequip <slot>, window <stats|items|equipment> <open|close>, move left|right|up|down <ms>, jump, portal, attack")
-    sp.add_argument("action", choices=["npc-talk", "npc-choose", "use-item", "equip", "unequip", "window", "move", "jump", "portal", "attack", "party-create", "party-leave", "party-invite", "party-accept"])
+    sp = sub.add_parser("act", help="Semantic action: character-choose <name>, npc-talk <oid>, npc-choose next|yes|no|prev|close|<n>, use-item <slot>, equip <slot>, unequip <slot>, window <stats|items|equipment> <open|close>, move left|right|up|down <ms>, jump, portal, attack")
+    sp.add_argument("action", choices=["login-notice", "pic-cancel", "world-choose", "channel-choose", "channel-change", "character-choose", "character-enter", "character-back", "npc-talk", "npc-choose", "use-item", "equip", "unequip", "window", "move", "jump", "portal", "attack", "party-create", "party-leave", "party-invite", "party-accept"])
     sp.add_argument("arg", nargs="*")
     sp.add_argument("--timeout", type=float, default=5.0)
     sp.add_argument("--completion-timeout", type=float, help="Seconds to wait for --wait-state (defaults to --timeout)")
     sp.add_argument("--wait-state", help="After dispatch, wait for a state predicate (for example map_id==100000000)")
     sp.set_defaults(func=cmd_act)
+    sp = sub.add_parser("pic", help="Submit to the active PIC keyboard (hidden prompt or --stdin; never argv)")
+    sp.add_argument("--stdin", action="store_true", help="Read PIC from stdin")
+    sp.add_argument("--timeout", type=float, default=5.0)
+    sp.add_argument("--completion-timeout", type=float)
+    sp.add_argument("--wait-state", help="Optional observed outcome after submitting")
+    sp.set_defaults(func=cmd_pic)
     sp = sub.add_parser("batch", help="Run 1–10 semantic actions from a JSON array on stdin under one lock")
     sp.add_argument("--timeout", type=float, default=5.0,
                     help="Seconds per action result (timed moves extend this to their duration)")
@@ -925,6 +990,9 @@ def main() -> None:
                         help="Enter the game from login using client screen events")
     sp.add_argument("--username", help="Account name (omit when the client saved it)")
     sp.add_argument("--password-stdin", action="store_true", help="Read password from stdin")
+    sp.add_argument("--world", type=int, help="World ID advertised by the server")
+    sp.add_argument("--channel", type=int, help="Channel number (1-based)")
+    sp.add_argument("--character", help="Select this exact character name before entering")
     sp.add_argument("--timeout", type=float, default=90.0, help="Overall transition timeout in seconds")
     sp.set_defaults(func=cmd_play)
     sp = sub.add_parser("stop", help="Stop client and virtual X server")

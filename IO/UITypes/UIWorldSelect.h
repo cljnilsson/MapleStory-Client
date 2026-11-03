@@ -42,6 +42,12 @@ namespace ms
 
 		UIElement::Type get_type() const override;
 
+		const std::vector<World> &get_worlds() const { return worlds; }
+		int get_selected_world() const { return world_selected ? worldid : -1; }
+		int get_selected_channel() const { return world_selected ? channelid + 1 : -1; }
+		bool select_world(int id);
+		bool select_channel(int channel);
+
 		void draw_world();
 
 		void add_world(World world);

@@ -16,6 +16,7 @@
 //	along with this program.  If not, see <https://www.gnu.org/licenses/>.		//
 //////////////////////////////////////////////////////////////////////////////////
 #include "UICharSelect.h"
+#include "../../HeadlessState.h"
 #include "UILoginNotice.h"
 #include "UIRaceSelect.h"
 #include "UIExplorerCreation.h"
@@ -662,6 +663,22 @@ namespace ms
 		return null_character;
 	}
 
+	bool UICharSelect::return_to_world()
+	{
+		if (!is_active() || !UI::get().get_element<UIWorldSelect>())
+			return false;
+		button_pressed(Buttons::BACK);
+		return true;
+	}
+
+	bool UICharSelect::enter_character()
+	{
+		if (!is_active() || selected_character >= characters.size() || require_pic < 0 || require_pic > 2)
+			return false;
+		button_pressed(Buttons::CHARACTER_SELECT);
+		return true;
+	}
+
 	Button::State UICharSelect::button_pressed(uint16_t buttonid)
 	{
 		switch (buttonid)
@@ -819,7 +836,10 @@ namespace ms
 				Sound(Sound::Name::SCROLLUP).play();
 
 				if (auto worldselect = UI::get().get_element<UIWorldSelect>())
+				{
 					worldselect->makeactive();
+					HeadlessState::set_screen(worldselect->get_selected_world() >= 0 ? "channel_select" : "world_select");
+				}
 
 				break;
 			default:
@@ -881,6 +901,21 @@ namespace ms
 		buttons[Buttons::CHARACTER_SELECT]->set_active(character_found);
 		buttons[Buttons::CHARACTER_DELETE]->set_state(
 				character_found ? Button::State::NORMAL : Button::State::DISABLED);
+	}
+
+	bool UICharSelect::select_character(const std::string &name)
+	{
+		for (size_t i = 0; i < characters.size() && i < static_cast<size_t>(characters_count); ++i)
+		{
+			if (characters[i].stats.name != name) continue;
+			selected_page = i / PAGESIZE;
+			update_buttons();
+			button_pressed(Buttons::CHARACTER_SLOT0 + i % PAGESIZE);
+			// Enter should select the character, rather than a previously tabbed button.
+			tab_active = false;
+			return true;
+		}
+		return false;
 	}
 
 	void UICharSelect::update_selected_character()

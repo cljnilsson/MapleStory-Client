@@ -299,6 +299,10 @@ namespace ms
 
 		UILoginNotice(uint16_t message);
 
+		uint16_t get_message() const { return message; }
+		bool can_cancel() const { return multiple; }
+		bool respond(bool confirm);
+
 		void send_key(int32_t keycode, bool pressed, bool escape) override;
 
 		UIElement::Type get_type() const override;
@@ -313,6 +317,7 @@ namespace ms
 			NO
 		};
 
+		uint16_t message;
 		bool saveid;
 		bool multiple;
 		std::function<void()> okhandler;

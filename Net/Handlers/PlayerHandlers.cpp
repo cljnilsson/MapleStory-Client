@@ -26,17 +26,25 @@
 #include "../../IO/UITypes/UICashShop.h"
 #include "../../IO/UITypes/UISkillBook.h"
 #include "../../IO/UITypes/UIStatsInfo.h"
+#include "../../IO/UITypes/UIChannel.h"
+#include "../Packets/LoginPackets.h"
+#include "../Session.h"
 
 namespace ms
 {
 	void ChangeChannelHandler::handle(InPacket& recv) const
 	{
+		const int32_t cid = Stage::get().get_player().get_oid();
 		LoginParser::parse_login(recv);
-
 		auto cashshop = UI::get().get_element<UICashShop>();
-
+		const bool connected = Session::get().is_connected();
+		UIChannel::confirm_change(connected && !cashshop);
+		if (!connected)
+			return;
 		if (cashshop)
 			cashshop->exit_cashshop();
+		else
+			PlayerLoginPacket(cid).dispatch();
 	}
 
 	void ChangeStatsHandler::handle(InPacket& recv) const

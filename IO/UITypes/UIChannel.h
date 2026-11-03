@@ -36,6 +36,11 @@ namespace ms
 
 		void update() override;
 
+		void toggle_active() override;
+		static void confirm_change(bool channel_transfer);
+		static bool request_channel(int channel);
+		static int get_pending_channel();
+
 		void send_key(int32_t keycode, bool pressed, bool escape) override;
 
 		Cursor::State send_cursor(bool clicked, Point<int16_t> cursorpos) override;
@@ -59,6 +64,7 @@ namespace ms
 			CH
 		};
 
+		static int pending_channel;
 		uint8_t current_channel;
 		uint8_t selected_channel;
 		uint8_t channel_count;

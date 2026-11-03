@@ -52,6 +52,14 @@ namespace ms
 
 	void MapNpcs::remove(int32_t oid)
 	{
+		std::queue<NpcSpawn> remaining;
+		while (!spawns.empty())
+		{
+			if (spawns.front().get_oid() != oid)
+				remaining.emplace(std::move(spawns.front()));
+			spawns.pop();
+		}
+		spawns.swap(remaining);
 		npcs.remove(oid);
 	}
 
@@ -63,6 +71,7 @@ namespace ms
 
 	void MapNpcs::clear()
 	{
+		spawns = {};
 		npcs.clear();
 	}
 

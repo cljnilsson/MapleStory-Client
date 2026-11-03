@@ -321,7 +321,11 @@ namespace ms
 		{
 			if (world_selected)
 			{
-				World selectedWorld = worlds[worldid];
+				const World *selected = nullptr;
+				for (const auto &world : worlds)
+					if (world.wid == worldid) selected = &world;
+				if (!selected) return;
+				const World &selectedWorld = *selected;
 
 				uint8_t selected_channel = channelid;
 				uint8_t channel_total = selectedWorld.channelcount;
@@ -413,7 +417,8 @@ namespace ms
 						}
 					}
 
-					buttons[Buttons::BT_WORLD0 + worldid]->set_state(Button::State::NORMAL);
+					if (auto old = buttons.find(Buttons::BT_WORLD0 + worldid); old != buttons.end())
+				old->second->set_state(Button::State::NORMAL);
 
 					worldid = static_cast<uint8_t>(selected_world);
 
@@ -448,6 +453,33 @@ namespace ms
 	UIElement::Type UIWorldSelect::get_type() const
 	{
 		return TYPE;
+	}
+
+	bool UIWorldSelect::select_world(int id)
+	{
+		for (const auto &world : worlds)
+		{
+			if (world.wid != id || world.channelcount == 0 || id < 0 || id >= 5)
+				continue;
+			auto button = buttons.find(Buttons::BT_WORLD0 + id);
+			if (button == buttons.end() || !button->second->is_active()) return false;
+			button_pressed(Buttons::BT_WORLD0 + id);
+			return true;
+		}
+		return false;
+	}
+
+	bool UIWorldSelect::select_channel(int channel)
+	{
+		if (!world_selected || channel < 1 || channel > 20) return false;
+		for (const auto &world : worlds)
+			if (world.wid == worldid && channel <= world.channelcount)
+			{
+				// Clicking the already selected channel enters it; semantic selection is idempotent.
+				if (channelid != channel - 1) button_pressed(Buttons::BT_CHANNEL0 + channel - 1);
+				return true;
+			}
+		return false;
 	}
 
 	void UIWorldSelect::draw_world()
@@ -571,7 +603,8 @@ namespace ms
 			return Button::State::NORMAL;
 		} else if (id == Buttons::BT_VIEWRECOMMENDED_SELECT)
 		{
-			buttons[Buttons::BT_WORLD0 + worldid]->set_state(Button::State::NORMAL);
+			if (auto old = buttons.find(Buttons::BT_WORLD0 + worldid); old != buttons.end())
+				old->second->set_state(Button::State::NORMAL);
 
 			worldid = recommended_worldid;
 
@@ -616,7 +649,8 @@ namespace ms
 		{
 			toggle_recommended(false);
 
-			buttons[Buttons::BT_WORLD0 + worldid]->set_state(Button::State::NORMAL);
+			if (auto old = buttons.find(Buttons::BT_WORLD0 + worldid); old != buttons.end())
+				old->second->set_state(Button::State::NORMAL);
 
 			worldid = id - Buttons::BT_WORLD0;
 
@@ -624,7 +658,8 @@ namespace ms
 
 			world_selected = true;
 			clear_selected_world();
-			change_world(worlds[worldid]);
+			for (const auto &world : worlds)
+				if (world.wid == worldid) change_world(world);
 
 			return Button::State::PRESSED;
 		} else if (id >= Buttons::BT_CHANNEL0 && id < Buttons::BT_ENTERWORLD)

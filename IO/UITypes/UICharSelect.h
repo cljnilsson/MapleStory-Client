@@ -58,6 +58,13 @@ namespace ms
 
 		const CharEntry &get_character(int32_t id);
 
+		const std::vector<CharEntry> &get_characters() const { return characters; }
+		int get_selected_character() const { return selected_character; }
+		int get_pic_mode() const { return require_pic; }
+		bool select_character(const std::string &name);
+		bool enter_character();
+		bool return_to_world();
+
 	protected:
 		Button::State button_pressed(uint16_t buttonid) override;
 

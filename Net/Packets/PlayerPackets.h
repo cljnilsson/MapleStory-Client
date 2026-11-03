@@ -25,6 +25,17 @@
 
 namespace ms
 {
+	// v83: zero-based target channel followed by the client timestamp.
+	class ChangeChannelPacket : public OutPacket
+	{
+	public:
+		explicit ChangeChannelPacket(uint8_t channel) : OutPacket(OutPacket::Opcode::CHANGE_CHANNEL)
+		{
+			write_byte(channel);
+			write_time();
+		}
+	};
+
 	// Requests a stat increase by spending AP
 	// Opcode: SPEND_AP(87)
 	class SpendApPacket : public OutPacket

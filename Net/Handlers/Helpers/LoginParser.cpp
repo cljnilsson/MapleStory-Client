@@ -21,6 +21,14 @@
 
 namespace ms
 {
+	namespace { std::map<uint8_t, uint8_t> channel_counts; }
+
+	uint8_t LoginParser::channel_count(uint8_t world)
+	{
+		auto found = channel_counts.find(world);
+		return found == channel_counts.end() ? 0 : found->second;
+	}
+
 	Account LoginParser::parse_account(InPacket& recv)
 	{
 		Account account;
@@ -79,6 +87,7 @@ namespace ms
 
 		recv.skip(2);
 
+		channel_counts[static_cast<uint8_t>(wid)] = channelcount;
 		return { name, message, chloads, channelcount, flag, wid };
 	}
 

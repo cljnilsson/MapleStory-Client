@@ -113,6 +113,16 @@ namespace ms
 		template<class T>
 		Optional<T> get_element();
 
+		// Shared type slots (e.g. LOGINNOTICE) can contain different subclasses.
+		template<class T>
+		Optional<T> get_element_checked() { return dynamic_cast<T *>(state->get(T::TYPE)); }
+
+		bool is_element_active(UIElement::Type type) const
+		{
+			auto element = state->get(type);
+			return element && element->is_active();
+		}
+
 		void remove(UIElement::Type type);
 
 	private:

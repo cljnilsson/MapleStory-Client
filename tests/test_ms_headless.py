@@ -69,13 +69,143 @@ class PlayTests(unittest.TestCase):
               patch.object(ms_headless, "replace_login_field",
                            side_effect=lambda *params: fields.append(params[4:])),
               patch.object(ms_headless, "press", side_effect=press),
+              patch.object(ms_headless, "cmd_act", side_effect=lambda action:
+                           log.append(next(steps))),
               patch.object(ms_headless.sys, "stdin", io.StringIO("password\n")),
               contextlib.redirect_stdout(io.StringIO()) as output):
             ms_headless.cmd_play(args)
 
-        self.assertEqual(keys, ["Return"] * 4)
+        self.assertEqual(keys, ["Return"] * 3)
         self.assertEqual(fields, [("account",), ("password",)])
         self.assertIn('"screen": "in_game"', output.getvalue())
+
+    def test_named_character_selection_finishes_before_enter(self):
+        log = MemoryLog("HEADLESS_STATE character_select count=2 pic=2\n")
+        args = argparse.Namespace(username=None, password_stdin=False,
+                                  timeout=2, character="PortWarrior")
+        ordered = []
+
+        def choose(action):
+            ordered.append((action.action, action.arg, action.wait_state))
+            if action.action == "character-enter":
+                log.append("HEADLESS_STATE in_game\n")
+
+        def enter(_state, key):
+            ordered.append(key)
+            log.append("HEADLESS_STATE in_game\n")
+
+        with (patch.object(ms_headless, "CLIENT_LOG", log),
+              patch.object(ms_headless, "read_state", return_value={}),
+              patch.object(ms_headless, "focus_game", return_value="window"),
+              patch.object(ms_headless, "cmd_act", side_effect=choose),
+              patch.object(ms_headless, "press", side_effect=enter),
+              contextlib.redirect_stdout(io.StringIO())):
+            ms_headless.cmd_play(args)
+        self.assertEqual(ordered, [
+            ("character-choose", ["PortWarrior"], "login.selected_name==PortWarrior"),
+            ("character-enter", [], None)])
+
+    def test_rejected_character_entry_does_not_send_return(self):
+        log = MemoryLog("HEADLESS_STATE character_select count=1 pic=2\n")
+        args = argparse.Namespace(timeout=2)
+        with (patch.object(ms_headless, "CLIENT_LOG", log),
+              patch.object(ms_headless, "read_state", return_value={}),
+              patch.object(ms_headless, "focus_game", return_value="window"),
+              patch.object(ms_headless, "cmd_act", side_effect=SystemExit("modal active")) as action,
+              patch.object(ms_headless, "press") as press):
+            with self.assertRaisesRegex(SystemExit, "modal active"):
+                ms_headless.cmd_play(args)
+        self.assertEqual(action.call_args.args[0].action, "character-enter")
+        press.assert_not_called()
+
+    def test_rejected_character_selection_does_not_enter(self):
+        log = MemoryLog("HEADLESS_STATE character_select count=2 pic=2\n")
+        args = argparse.Namespace(username=None, password_stdin=False,
+                                  timeout=2, character="Missing")
+        with (patch.object(ms_headless, "CLIENT_LOG", log),
+              patch.object(ms_headless, "read_state", return_value={}),
+              patch.object(ms_headless, "focus_game", return_value="window"),
+              patch.object(ms_headless, "cmd_act", side_effect=SystemExit(1)),
+              patch.object(ms_headless, "press") as press):
+            with self.assertRaises(SystemExit):
+                ms_headless.cmd_play(args)
+        press.assert_not_called()
+
+    def test_explicit_world_and_channel_are_confirmed_before_enter(self):
+        log = MemoryLog("HEADLESS_STATE world_select\n")
+        args = argparse.Namespace(timeout=2, world=2, channel=3)
+        actions = []
+        keys = []
+
+        def choose(action):
+            actions.append((action.action, action.arg, action.wait_state))
+            if action.action == "world-choose":
+                log.append("HEADLESS_STATE channel_select\n")
+
+        def enter(_state, key):
+            keys.append(key)
+            log.append("HEADLESS_STATE in_game\n")
+
+        with (patch.object(ms_headless, "CLIENT_LOG", log),
+              patch.object(ms_headless, "read_state", return_value={}),
+              patch.object(ms_headless, "client_alive", return_value=True),
+              patch.object(ms_headless, "focus_game", return_value="window"),
+              patch.object(ms_headless, "cmd_act", side_effect=choose),
+              patch.object(ms_headless, "press", side_effect=enter),
+              contextlib.redirect_stdout(io.StringIO())):
+            ms_headless.cmd_play(args)
+        self.assertEqual(actions, [
+            ("world-choose", ["2"], "login.world_id==2"),
+            ("channel-choose", ["3"], "login.channel==3")])
+        self.assertEqual(keys, ["Return"])
+
+    def test_resumed_channel_screen_applies_world_before_channel(self):
+        log = MemoryLog("HEADLESS_STATE channel_select\n")
+        args = argparse.Namespace(timeout=2, world=2, channel=3)
+        actions = []
+        keys = []
+
+        def choose(action):
+            actions.append((action.action, action.arg, action.wait_state))
+
+        def enter(_state, key):
+            keys.append(key)
+            log.append("HEADLESS_STATE in_game\n")
+
+        with (patch.object(ms_headless, "CLIENT_LOG", log),
+              patch.object(ms_headless, "read_state", return_value={}),
+              patch.object(ms_headless, "client_alive", return_value=True),
+              patch.object(ms_headless, "focus_game", return_value="window"),
+              patch.object(ms_headless, "cmd_act", side_effect=choose),
+              patch.object(ms_headless, "press", side_effect=enter),
+              contextlib.redirect_stdout(io.StringIO())):
+            ms_headless.cmd_play(args)
+        self.assertEqual(actions, [
+            ("world-choose", ["2"], "login.world_id==2"),
+            ("channel-choose", ["3"], "login.channel==3")])
+        self.assertEqual(keys, ["Return"])
+
+    def test_resumed_selection_rejection_does_not_enter(self):
+        for rejected_action in ("world-choose", "channel-choose"):
+            with self.subTest(action=rejected_action):
+                log = MemoryLog("HEADLESS_STATE channel_select\n")
+                args = argparse.Namespace(timeout=2, world=2, channel=3)
+                actions = []
+
+                def choose(action):
+                    actions.append(action.action)
+                    if action.action == rejected_action:
+                        raise SystemExit(1)
+
+                with (patch.object(ms_headless, "CLIENT_LOG", log),
+                      patch.object(ms_headless, "read_state", return_value={}),
+                      patch.object(ms_headless, "focus_game", return_value="window"),
+                      patch.object(ms_headless, "cmd_act", side_effect=choose),
+                      patch.object(ms_headless, "press") as press):
+                    with self.assertRaises(SystemExit):
+                        ms_headless.cmd_play(args)
+                press.assert_not_called()
+                self.assertEqual(actions[-1], rejected_action)
 
     def test_play_stops_at_pic_prompt(self):
         log = MemoryLog("HEADLESS_STATE character_select count=1 pic=1\n")
@@ -111,6 +241,27 @@ class PlayTests(unittest.TestCase):
 
 
 class GMOutcomeTests(unittest.TestCase):
+    def test_gm_waits_for_state_without_expected_reply(self):
+        args = argparse.Namespace(
+            text="!map", stdin=False, expect=None, timeout=8,
+            wait_state="map_id==100000000", completion_timeout=3)
+        waits = []
+        with (patch.object(ms_headless, "read_state", return_value={}),
+              patch.object(ms_headless, "last_seq", return_value=4),
+              patch.object(ms_headless, "focus_game"),
+              patch.object(ms_headless, "press"),
+              patch.object(ms_headless, "type_text"),
+              patch.object(ms_headless.time, "sleep"),
+              patch.object(ms_headless, "wait_for", side_effect=lambda *a, **kw:
+                           waits.append((a, kw)) or {"map_id": 100000000}),
+              contextlib.redirect_stdout(io.StringIO()) as output):
+            ms_headless.cmd_gm(args)
+
+        self.assertEqual(len(waits), 1)
+        self.assertEqual(waits[0][0][1], 3)
+        self.assertEqual(waits[0][1]["state_expr"], "map_id==100000000")
+        self.assertIn('"dispatch": "not_requested"', output.getvalue())
+
     def test_gm_waits_for_observed_state_after_expected_reply(self):
         args = argparse.Namespace(
             text="!map", stdin=False, expect="Moved", timeout=8,
@@ -148,6 +299,45 @@ class ActionTransportTests(unittest.TestCase):
         for item in reversed(self.patches):
             item.stop()
         self.tempdir.cleanup()
+
+    def test_pic_private_request_and_redacted_result(self):
+        secret = "864209"
+        def accepted(*_args, **_kwargs):
+            request = self.state_dir / "act.txt"
+            self.assertEqual(request.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(self.state_dir.stat().st_mode & 0o777, 0o700)
+            fields = request.read_text().split()
+            self.assertEqual(fields[1:], ["pic-submit", secret])
+            return {"type": "act", "id": fields[0], "act": fields[1], "ok": True}
+        args = argparse.Namespace(stdin=True, timeout=2, wait_state=None,
+                                  completion_timeout=None)
+        with (patch.object(ms_headless.sys, "stdin", io.StringIO(secret + "\n")),
+              patch.object(ms_headless, "read_state", return_value={}),
+              patch.object(ms_headless, "wait_for", side_effect=accepted),
+              contextlib.redirect_stdout(io.StringIO()) as output):
+            ms_headless.cmd_pic(args)
+        self.assertNotIn(secret, output.getvalue())
+        self.assertFalse((self.state_dir / "act.txt").exists())
+        self.assertFalse(list(self.state_dir.glob("*.tmp")))
+
+    def test_invalid_pic_never_writes_request(self):
+        args = argparse.Namespace(stdin=True, timeout=2, wait_state=None,
+                                  completion_timeout=None)
+        for value in ("12345", "1" * 17, "12345a", "１２３４５６", "123 456"):
+            with self.subTest(value=value), patch.object(ms_headless.sys, "stdin", io.StringIO(value)):
+                with self.assertRaises(SystemExit) as error:
+                    ms_headless.cmd_pic(args)
+                self.assertNotIn(value, str(error.exception))
+                self.assertFalse((self.state_dir / "act.txt").exists())
+
+    def test_pic_timeout_removes_secret_request(self):
+        def timeout(*_args, **_kwargs):
+            raise TimeoutError("timeout")
+        with patch.object(ms_headless, "wait_for", side_effect=timeout):
+            with self.assertRaises(TimeoutError):
+                ms_headless.dispatch_action({}, "pic-submit", ["864209"], 1)
+        self.assertFalse((self.state_dir / "act.txt").exists())
+        self.assertNotIn("864209", (self.state_dir / "cancel.txt").read_text())
 
     def test_action_separates_dispatch_from_observed_completion(self):
         observed = iter((
@@ -207,6 +397,60 @@ class ActionTransportTests(unittest.TestCase):
                       str(raised.exception))
         self.assertEqual(error.getvalue(), "")
         read_state.assert_not_called()
+
+    def test_batch_dispatches_channel_change(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with (patch.object(ms_headless, "STATE_DIR", Path(directory)),
+                  patch.object(ms_headless, "read_state", return_value={}),
+                  patch.object(ms_headless, "dispatch_action", return_value={
+                      "dispatch": {"ok": True}, "completion": "not_requested"}) as dispatch,
+                  patch.object(ms_headless.sys, "stdin", io.StringIO(
+                      '[["channel-change",2]]')),
+                  contextlib.redirect_stdout(io.StringIO())):
+                ms_headless.cmd_batch(argparse.Namespace(timeout=2))
+                self.assertEqual(dispatch.call_args.args[1:3], ("channel-change", ["2"]))
+
+    def test_batch_selects_character_before_entering(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with (patch.object(ms_headless, "STATE_DIR", Path(directory)),
+                  patch.object(ms_headless, "read_state", return_value={}),
+                  patch.object(ms_headless, "dispatch_action", return_value={
+                      "dispatch": {"ok": True}, "completion": "not_requested"}) as dispatch,
+                  patch.object(ms_headless.sys, "stdin", io.StringIO(
+                      '[["character-choose","Test"],["character-enter"]]')),
+                  contextlib.redirect_stdout(io.StringIO())):
+                ms_headless.cmd_batch(argparse.Namespace(timeout=2))
+                self.assertEqual(
+                    [(call.args[1], call.args[2]) for call in dispatch.call_args_list],
+                    [("character-choose", ["Test"]), ("character-enter", [])])
+
+    def test_rejected_login_notice_stops_batch_before_character_selection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with (patch.object(ms_headless, "STATE_DIR", Path(directory)),
+                  patch.object(ms_headless, "read_state", return_value={}),
+                  patch.object(ms_headless, "dispatch_action", return_value={
+                      "dispatch": {"ok": False}, "completion": "not_dispatched"}) as dispatch,
+                  patch.object(ms_headless.sys, "stdin", io.StringIO(
+                      '[["login-notice","cancel"],["character-choose","Test"]]')),
+                  contextlib.redirect_stdout(io.StringIO())):
+                with self.assertRaises(SystemExit) as raised:
+                    ms_headless.cmd_batch(argparse.Namespace(timeout=2))
+                self.assertEqual(raised.exception.code, 1)
+                dispatch.assert_called_once_with({}, "login-notice", ["cancel"], 2, None, None)
+
+    def test_rejected_pic_cancel_stops_batch_before_character_selection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with (patch.object(ms_headless, "STATE_DIR", Path(directory)),
+                  patch.object(ms_headless, "read_state", return_value={}),
+                  patch.object(ms_headless, "dispatch_action", return_value={
+                      "dispatch": {"ok": False}, "completion": "not_dispatched"}) as dispatch,
+                  patch.object(ms_headless.sys, "stdin", io.StringIO(
+                      '[["pic-cancel"],["character-choose","Test"]]')),
+                  contextlib.redirect_stdout(io.StringIO())):
+                with self.assertRaises(SystemExit) as raised:
+                    ms_headless.cmd_batch(argparse.Namespace(timeout=2))
+                self.assertEqual(raised.exception.code, 1)
+                dispatch.assert_called_once_with({}, "pic-cancel", [], 2, None, None)
 
     def test_batch_stops_at_first_rejected_action(self):
         args = argparse.Namespace(timeout=2)

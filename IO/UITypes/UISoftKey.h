@@ -46,6 +46,11 @@ namespace ms
 
 		UISoftKey(OkCallback ok_callback);
 
+		// Submit through the same validation/callback path as the numeric keyboard.
+		bool submit_digits(const std::string &digits);
+		bool can_cancel() const { return static_cast<bool>(cancel_callback); }
+		bool cancel();
+
 		void draw(float inter) const override;
 
 		void update() override;

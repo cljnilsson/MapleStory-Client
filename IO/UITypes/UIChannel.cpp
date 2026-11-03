@@ -17,6 +17,12 @@
 //////////////////////////////////////////////////////////////////////////////////
 #include "V83UIWindowCompat.h"
 #include "UIChannel.h"
+#include "../../Configuration.h"
+#include "../../Net/Session.h"
+#include "../../Net/Packets/PlayerPackets.h"
+#include "../../Net/Handlers/Helpers/LoginParser.h"
+
+#include <algorithm>
 
 #include "../KeyAction.h"
 
@@ -28,12 +34,16 @@
 
 namespace ms
 {
+	int UIChannel::pending_channel = -1;
+
 	UIChannel::UIChannel() : UIDragElement<PosCHANNEL>()
 	{
-		uint8_t selected_world = 1; // TODO: Need to get current world user is on
-		current_channel = 9; // TODO: Need to get current channel user is on
+		uint8_t selected_world = Configuration::get().get_worldid();
+		current_channel = Configuration::get().get_channelid();
 		selected_channel = current_channel;
-		channel_count = 20; // TODO: Need to get total number of channels on world
+		channel_count = std::min<uint8_t>(20, LoginParser::channel_count(selected_world));
+		current_channel_x = selected_channel_x = 11;
+		current_channel_y = selected_channel_y = 55;
 
 		nl::node Channel = v83ui::window("Channel");
 
@@ -117,85 +127,18 @@ namespace ms
 			} else if (keycode == KeyAction::Id::RETURN)
 			{
 				change_channel();
-			} else if (keycode == KeyAction::Id::UP)
+			} else if (channel_count > 1)
 			{
-				if (selected_channel > 4)
-				{
-					selected_channel -= 5;
-				} else
-				{
-					for (size_t i = 0; i < 3; i++)
-						selected_channel += 5;
-				}
-
-				if (selected_channel == current_channel)
-				{
-					if (selected_channel > 4)
-					{
-						selected_channel -= 5;
-					} else
-					{
-						for (size_t i = 0; i < 3; i++)
-							selected_channel += 5;
-					}
-				}
-
-				update_selected_channel_position();
-			} else if (keycode == KeyAction::Id::DOWN)
-			{
-				if (selected_channel < 15)
-				{
-					selected_channel += 5;
-				} else
-				{
-					for (size_t i = 0; i < 3; i++)
-						selected_channel -= 5;
-				}
-
-				if (selected_channel == current_channel)
-				{
-					if (selected_channel < 15)
-					{
-						selected_channel += 5;
-					} else
-					{
-						for (size_t i = 0; i < 3; i++)
-							selected_channel -= 5;
-					}
-				}
-
-				update_selected_channel_position();
-			} else if (keycode == KeyAction::Id::LEFT)
-			{
-				if (selected_channel != 0)
-					selected_channel--;
-				else
-					selected_channel = channel_count - 1;
-
-				if (selected_channel == current_channel)
-				{
-					if (selected_channel != 0)
-						selected_channel--;
-					else
-						selected_channel = channel_count - 1;
-				}
-
-				update_selected_channel_position();
-			} else if (keycode == KeyAction::Id::RIGHT)
-			{
-				if (selected_channel != channel_count - 1)
-					selected_channel++;
-				else
-					selected_channel = 0;
-
-				if (selected_channel == current_channel)
-				{
-					if (selected_channel != channel_count - 1)
-						selected_channel++;
-					else
-						selected_channel = 0;
-				}
-
+				int step = keycode == KeyAction::Id::UP ? -5 :
+					keycode == KeyAction::Id::DOWN ? 5 :
+					keycode == KeyAction::Id::LEFT ? -1 :
+					keycode == KeyAction::Id::RIGHT ? 1 : 0;
+				if (step == 0)
+					return;
+				int target = (selected_channel + step + channel_count * 5) % channel_count;
+				if (target == current_channel)
+					target = (target + (step < 0 ? -1 : 1) + channel_count) % channel_count;
+				selected_channel = target;
 				update_selected_channel_position();
 			}
 		}
@@ -290,7 +233,7 @@ namespace ms
 	{
 		deactivate();
 
-		current_channel = 9; // TODO: Need to get current channel user is on
+		current_channel = Configuration::get().get_channelid();
 		selected_channel = current_channel;
 		selected_channel_x = current_channel_x;
 		selected_channel_y = current_channel_y;
@@ -298,8 +241,43 @@ namespace ms
 
 	void UIChannel::change_channel()
 	{
-		// TODO: Send packet to change channel?
-		cancel();
+		if (request_channel(selected_channel + 1)) cancel();
+	}
+
+	bool UIChannel::request_channel(int channel)
+	{
+		auto &config = Configuration::get();
+		const int count = std::min<int>(20, LoginParser::channel_count(config.get_worldid()));
+		if (!Session::get().is_connected()
+			|| channel < 1 || channel > count || channel - 1 == config.get_channelid())
+			return false;
+		pending_channel = channel - 1;
+		ChangeChannelPacket(static_cast<uint8_t>(pending_channel)).dispatch();
+		return true;
+	}
+
+	int UIChannel::get_pending_channel()
+	{
+		return pending_channel < 0 ? 0 : pending_channel + 1;
+	}
+
+	void UIChannel::confirm_change(bool channel_transfer)
+	{
+		if (channel_transfer && pending_channel >= 0)
+		{
+			Configuration::get().set_channelid(static_cast<uint8_t>(pending_channel));
+		}
+		pending_channel = -1;
+	}
+
+	void UIChannel::toggle_active()
+	{
+		UIElement::toggle_active();
+		current_channel = Configuration::get().get_channelid();
+		selected_channel = current_channel;
+		update_selected_channel_position();
+		current_channel_x = selected_channel_x;
+		current_channel_y = selected_channel_y;
 	}
 
 	void UIChannel::update_selected_channel_position()
