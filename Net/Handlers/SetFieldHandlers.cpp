@@ -93,19 +93,27 @@ namespace ms
 		int32_t cid = recv.read_int();
 		auto charselect = UI::get().get_element<UICharSelect>();
 
-		if (!charselect)
+		if (charselect)
+		{
+			const CharEntry& playerentry = charselect->get_character(cid);
+			if (playerentry.id != cid)
+				return;
+			Stage::get().loadplayer(playerentry);
+		}
+		else if (Stage::get().get_player().get_oid() != cid)
 			return;
-
-		const CharEntry& playerentry = charselect->get_character(cid);
-
-		if (playerentry.id != cid)
-			return;
-
-		Stage::get().loadplayer(playerentry);
-
-		LoginParser::parse_stats(recv);
 
 		Player& player = Stage::get().get_player();
+		StatsEntry stats = LoginParser::parse_stats(recv);
+		if (!charselect)
+		{
+			player.get_stats() = CharStats(stats);
+			player.get_inventory() = Inventory();
+			player.get_skills() = SkillBook();
+			player.get_quests() = QuestLog();
+			player.get_teleport_rock() = TeleportRock();
+			player.get_monsterbook() = MonsterBook();
+		}
 
 		recv.read_byte(); // 'buddycap'
 
