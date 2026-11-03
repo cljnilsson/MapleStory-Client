@@ -116,7 +116,7 @@ namespace ms
 		{
 			Optional<const Drop> drop = mmo.second.get();
 
-			if (drop && drop->bounds().contains(playerpos))
+			if (drop && drop->can_pick_up() && drop->bounds().contains(playerpos))
 			{
 				lootenabled = false;
 

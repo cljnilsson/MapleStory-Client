@@ -37,7 +37,10 @@ namespace ms
 			write_byte((attack.mobcount << 4) | attack.hitcount);
 			write_int(attack.skill);
 
-			if (attack.charge > 0)
+			// Java AbstractDealDamageHandler: presence depends on skill, even at zero charge.
+			if (attack.skill == 2121001 || attack.skill == 2221001 || attack.skill == 2321001
+				|| attack.skill == 5101004 || attack.skill == 15101003 || attack.skill == 5201002
+				|| attack.skill == 14111006 || attack.skill == 22121000 || attack.skill == 22151001)
 				write_int(attack.charge);
 
 			skip(8);
@@ -55,7 +58,7 @@ namespace ms
 				skip(1);
 				write_byte(attack.toleft);
 				skip(7);
-				// TODO: skip(4); If hurricane, piercing arrow or rapidfire
+				if (attack.skill == 3121004 || attack.skill == 3221001 || attack.skill == 5221004 || attack.skill == 13111002) skip(4);
 			}
 			else
 			{
@@ -124,7 +127,7 @@ namespace ms
 	class UseSkillPacket : public OutPacket
 	{
 	public:
-		UseSkillPacket(int32_t skillid, int32_t level) : OutPacket(OutPacket::Opcode::USE_SKILL)
+		UseSkillPacket(int32_t skillid, int32_t level, Point<int16_t> pos = {}) : OutPacket(OutPacket::Opcode::USE_SKILL)
 		{
 			write_time();
 			write_int(skillid);
@@ -135,7 +138,33 @@ namespace ms
 			if (skillid % 10000000 == 1004)
 				skip(2); // TODO: No idea what this could be
 
-			// TODO: A point (4 bytes) could be added at the end
+			write_short(pos.x());
+			write_short(pos.y());
+			write_byte(0); // Java checks available()==5 before reading the optional position.
+		}
+	};
+
+	// Java SkillEffectHandler / CancelBuffHandler wire layouts.
+	class SkillEffectPacket : public OutPacket
+	{
+	public:
+		SkillEffectPacket(int32_t skill, uint8_t level, uint8_t speed, bool left) : OutPacket(Opcode::SKILL_EFFECT)
+		{ write_int(skill); write_byte(level); write_byte(0); write_byte(speed); write_byte(left); }
+	};
+	class CancelSkillPacket : public OutPacket
+	{
+	public:
+		explicit CancelSkillPacket(int32_t skill) : OutPacket(Opcode::CANCEL_SKILL) { write_int(skill); }
+	};
+	class SummonAttackPacket : public OutPacket
+	{
+	public:
+		SummonAttackPacket(int32_t oid, bool left, Point<int16_t> pos, const AttackResult &attack) : OutPacket(Opcode::SUMMON_ATTACK)
+		{
+			write_int(oid); write_time(); write_byte(left); write_byte(attack.mobcount);
+			write_short(pos.x()); write_short(pos.y()); write_short(pos.x()); write_short(pos.y());
+			for (const auto &line : attack.damagelines)
+			{ write_int(line.first); skip(18); write_int(line.second.front().first); }
 		}
 	};
 }

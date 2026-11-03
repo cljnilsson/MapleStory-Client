@@ -40,7 +40,30 @@ namespace ms
 		void update();
 
 		// Make the player use a special move
-		void use_move(int32_t move_id);
+		bool use_move(int32_t move_id);
+		bool skill_key(int32_t skill, bool down);
+		bool cancel_skill();
+		int32_t held_skill() const { return held; }
+		int32_t charge_ms() const { return held_ms; }
+		void reset_field();
+		void skill_effect(int32_t cid, int32_t skill, int level, bool left);
+		void cancel_effect(int32_t cid, int32_t skill);
+
+		struct Summon
+		{
+			int32_t owner = 0, oid = 0, skill = 0;
+			int level = 0, movement = 0;
+			bool can_attack = false, asset = false, left = false, attacking = false;
+			Point<int16_t> position;
+			Animation idle, attack;
+			int elapsed = 0, interval = 3000, radius = 0;
+			mutable bool drawn = false;
+		};
+		void spawn_summon(Summon summon);
+		void remove_summon(int32_t owner, int32_t oid);
+		void summon_attack(int32_t owner, int32_t oid, bool left, const std::vector<std::pair<int32_t, int32_t>> &damage);
+		const auto &get_summons() const { return summons; }
+
 
 		// Add an attack to the attack queue.
 		void push_attack(const AttackResult &attack);
@@ -71,7 +94,8 @@ namespace ms
 
 		void apply_attack(const AttackResult &attack);
 
-		void apply_move(const SpecialMove &move);
+		void apply_move(const SpecialMove &move, int32_t charge = 0);
+		void update_summons();
 
 		std::vector<int32_t>
 		find_closest(MapObjects *objs, Rectangle<int16_t> range, Point<int16_t> origin, uint8_t objcount,
@@ -93,6 +117,8 @@ namespace ms
 
 		const SpecialMove &get_move(int32_t move_id);
 
+		int32_t held = 0, held_ms = 0, hold_tick = 0;
+		std::map<int32_t, Summon> summons;
 		Player &player;
 		MapChars &chars;
 		MapMobs &mobs;

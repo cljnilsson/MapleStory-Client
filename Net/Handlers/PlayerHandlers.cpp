@@ -16,6 +16,7 @@
 //	along with this program.  If not, see <https://www.gnu.org/licenses/>.		//
 //////////////////////////////////////////////////////////////////////////////////
 #include "PlayerHandlers.h"
+#include "CashShopHandlers.h"
 
 #include "Helpers/LoginParser.h"
 
@@ -51,6 +52,8 @@ namespace ms
 	{
 		recv.read_bool(); // 'itemreaction'
 		int32_t updatemask = recv.read_int();
+		auto& cash = CashShopState::get();
+		if (cash.opened && updatemask == 0 && !cash.pending.empty()) cash.finish("server_reenabled");
 
 		bool recalculate = false;
 
@@ -160,13 +163,13 @@ namespace ms
 			return;
 		}
 
-		for (auto& iter : Buffstat::first_codes)
-			if (firstmask & iter.second)
-				handle_buff(recv, iter.first);
-
-		for (auto& iter : Buffstat::second_codes)
-			if (secondmask & iter.second)
-				handle_buff(recv, iter.first);
+		auto read_mask = [&](uint64_t mask, const auto &codes) {
+			std::map<uint64_t, Buffstat::Id> sorted;
+			for (const auto &entry : codes) if (mask & entry.second) sorted.emplace(entry.second, entry.first);
+			for (const auto &entry : sorted) handle_buff(recv, entry.second);
+		};
+		read_mask(firstmask, Buffstat::first_codes);
+		read_mask(secondmask, Buffstat::second_codes);
 
 		Stage::get().get_player().recalc_stats(false);
 	}
@@ -185,7 +188,12 @@ namespace ms
 
 	void CancelBuffHandler::handle_buff(InPacket&, Buffstat::Id bs) const
 	{
-		Stage::get().get_player().cancel_buff(bs);
+		auto &p = Stage::get().get_player();
+		int source = p.get_buffs()[bs].skillid;
+		p.cancel_buff(bs);
+		bool remains = false;
+		for (const auto &b : p.get_buffs().values()) if (b.skillid && b.skillid == source) remains = true;
+		if (!remains) if (auto list = UI::get().get_element<UIBuffList>()) list->remove_buff(source);
 	}
 
 	void RecalculateStatsHandler::handle(InPacket&) const

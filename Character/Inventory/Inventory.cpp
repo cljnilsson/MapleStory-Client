@@ -16,6 +16,8 @@
 //	along with this program.  If not, see <https://www.gnu.org/licenses/>.		//
 //////////////////////////////////////////////////////////////////////////////////
 #include "Inventory.h"
+#include "../../Net/Packets/InventoryPackets.h"
+#include "../../Data/ItemData.h"
 
 #include "../../Data/BulletData.h"
 #include "../../Data/EquipData.h"
@@ -345,6 +347,29 @@ namespace ms
 			return iter->second.item_id;
 		else
 			return 0;
+	}
+
+	Optional<const Item> Inventory::get_item(InventoryType::Id type, int16_t slot) const
+	{
+		auto s = inventories[type].find(slot);
+		if (s == inventories[type].end()) return {};
+		auto i = items.find(s->second.unique_id);
+		return i == items.end() ? Optional<const Item>{} : Optional<const Item>{i->second};
+	}
+
+	bool Inventory::request_move(InventoryType::Id type, int16_t source, int16_t dest, int16_t quantity) const
+	{
+		if (type < InventoryType::EQUIP || type > InventoryType::CASH || source < 1
+			|| dest < 0 || dest > get_slotmax(type) || source == dest || quantity < 1) return false;
+		int32_t id = get_item_id(type, source);
+		int16_t count = get_item_count(type, source);
+		if (!id || quantity > count) return false;
+		// The v83 server moves/merges whole stacks; quantity applies only to drops.
+		if (dest && quantity != count) return false;
+		const auto &data = ItemData::get(id);
+		if (!dest && (type == InventoryType::CASH || data.is_cashitem() || data.is_untradable())) return false;
+		MoveItemPacket(type, source, dest, quantity).dispatch();
+		return true;
 	}
 
 	Optional<const Equip> Inventory::get_equip(InventoryType::Id type, int16_t slot) const

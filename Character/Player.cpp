@@ -16,6 +16,7 @@
 //	along with this program.  If not, see <https://www.gnu.org/licenses/>.		//
 //////////////////////////////////////////////////////////////////////////////////
 #include "Player.h"
+#include "../HeadlessState.h"
 
 #include "PlayerStates.h"
 
@@ -76,6 +77,8 @@ namespace ms
 
 	void Player::respawn(Point<int16_t> pos, bool uw)
 	{
+		set_charge(0);
+		set_chair(0);
 		set_position(pos.x(), pos.y());
 		underwater = uw;
 		keysdown.clear();
@@ -142,8 +145,32 @@ namespace ms
 		InventoryType::Id type = InventoryType::by_item_id(itemid);
 
 		if (int16_t slot = inventory.find_item(type, itemid))
-			if (type == InventoryType::Id::USE)
-				UseItemPacket(slot, itemid).dispatch();
+			use_inventory_item(type, slot, itemid / 10000 == 243);
+	}
+
+	bool Player::use_inventory_item(InventoryType::Id type, int16_t slot, bool scripted)
+	{
+		int32_t item = inventory.get_item_id(type, slot);
+		if (slot < 1 || !item) return false;
+		if (type == InventoryType::SETUP && item / 10000 == 301 && !scripted)
+		{
+			if (is_attacking() || is_climbing() || is_sitting() || !phobj.onground) return false;
+			UseChairPacket(item).dispatch();
+			// The protocol acknowledges portable chairs with enableActions only.
+			set_chair(item);
+			return true;
+		}
+		if (type != InventoryType::USE || scripted != (item / 10000 == 243)) return false;
+		if (scripted) ScriptedItemPacket(slot, item).dispatch();
+		else UseItemPacket(slot, item).dispatch();
+		return true;
+	}
+
+	bool Player::stand_up()
+	{
+		if (!is_sitting()) return false;
+		CancelChairPacket(-1).dispatch();
+		return true;
 	}
 
 	void Player::draw(Layer::Id layer, double viewx, double viewy, float alpha) const
@@ -154,6 +181,7 @@ namespace ms
 
 	int8_t Player::update(const Physics &physics)
 	{
+		for (auto &cooldown : cooldowns) cooldown.second = std::max(0, cooldown.second - Constants::TIMESTEP);
 		const PlayerState *pst = get_state(state);
 
 		if (pst)
@@ -227,7 +255,7 @@ namespace ms
 
 	bool Player::can_attack() const
 	{
-		return !attacking && !is_climbing() && !is_sitting() && look.get_equips().has_weapon();
+		return stats.get_stat(MapleStat::HP) > 0 && !attacking && !is_climbing() && !is_sitting() && look.get_equips().has_weapon();
 	}
 
 	SpecialMove::ForbidReason Player::can_use(const SpecialMove &move) const
@@ -356,11 +384,13 @@ namespace ms
 	void Player::give_buff(Buff buff)
 	{
 		buffs[buff.stat] = buff;
+		HeadlessState::buff_changed(int(buff.stat), buff.skillid, buff.duration, buff.value);
 	}
 
 	void Player::cancel_buff(Buffstat::Id stat)
 	{
 		buffs[stat] = {};
+		HeadlessState::buff_changed(int(stat), 0, 0, 0);
 	}
 
 	bool Player::has_buff(Buffstat::Id stat) const
@@ -377,9 +407,20 @@ namespace ms
 			recalc_stats(false);
 	}
 
+	void Player::reset_field_data(const StatsEntry &entry)
+	{
+		stats = CharStats(entry);
+		inventory = Inventory();
+		skillbook = SkillBook();
+		questlog = QuestLog();
+		teleportrock = TeleportRock();
+		monsterbook = MonsterBook();
+		cooldowns.clear();
+	}
+
 	void Player::add_cooldown(int32_t skill_id, int32_t cooltime)
 	{
-		cooldowns[skill_id] = cooltime;
+		cooldowns[skill_id] = std::max(0, cooltime) * 1000;
 	}
 
 	bool Player::has_cooldown(int32_t skill_id) const

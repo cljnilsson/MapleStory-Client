@@ -43,7 +43,7 @@ namespace ms
 		// Return id and level of all required skills.
 		std::unordered_map<int32_t, int32_t> collect_required(int32_t id) const;
 
-	private:
+	public:
 		struct SkillEntry
 		{
 			int32_t level;
@@ -51,6 +51,9 @@ namespace ms
 			int64_t expiration;
 		};
 
+		const auto &entries() const { return skillentries; }
+
+	private:
 		std::unordered_map<int32_t, SkillEntry> skillentries;
 	};
 }

@@ -16,6 +16,7 @@
 //	along with this program.  If not, see <https://www.gnu.org/licenses/>.		//
 //////////////////////////////////////////////////////////////////////////////////
 #include "DamageNumber.h"
+#include "../../HeadlessState.h"
 
 #include "../Constants.h"
 
@@ -24,8 +25,10 @@
 
 namespace ms
 {
-	DamageNumber::DamageNumber(Type t, int32_t damage, int16_t starty, int16_t x)
+	DamageNumber::DamageNumber(Type t, int32_t damage, int16_t starty, int16_t x, int32_t owner)
 	{
+		actor = owner;
+		observation = HeadlessState::presentation("model", "damage", damage, actor);
 		type = t;
 
 		if (damage > 0)
@@ -82,6 +85,11 @@ namespace ms
 
 	void DamageNumber::draw(double viewx, double viewy, float alpha) const
 	{
+		if (observation && !observed_draw)
+		{
+			HeadlessState::presentation("render", "damage", 0, actor, observation);
+			observed_draw = true;
+		}
 		Point<int16_t> absolute = moveobj.get_absolute(viewx, viewy, alpha);
 		Point<int16_t> position = absolute - Point<int16_t>(0, shift);
 		float interopc = opacity.get(alpha);

@@ -16,6 +16,7 @@
 //	along with this program.  If not, see <https://www.gnu.org/licenses/>.		//
 //////////////////////////////////////////////////////////////////////////////////
 #include "Stage.h"
+#include "../HeadlessState.h"
 
 #include "../Configuration.h"
 #include "Timer.h"
@@ -73,6 +74,7 @@ namespace ms
 	{
 		state = State::INACTIVE;
 
+		combat.reset_field();
 		chars.clear();
 		npcs.clear();
 		mobs.clear();
@@ -109,6 +111,7 @@ namespace ms
 
 	void Stage::draw(float alpha) const
 	{
+		HeadlessState::begin_frame();
 		if (state != State::ACTIVE)
 			return;
 
@@ -221,11 +224,16 @@ namespace ms
 
 	void Stage::check_drops()
 	{
-		Point<int16_t> playerpos = player.get_position();
-		MapDrops::Loot loot = drops.find_loot_at(playerpos);
+		request_pickup();
+	}
 
-		if (loot.first)
-			PickupItemPacket(loot.first, loot.second).dispatch();
+	bool Stage::request_pickup()
+	{
+		if (state != State::ACTIVE || !playable || player.is_attacking() || player.is_sitting()) return false;
+		MapDrops::Loot loot = drops.find_loot_at(player.get_position());
+		if (!loot.first) return false;
+		PickupItemPacket(loot.first, player.get_position()).dispatch();
+		return true;
 	}
 
 	void Stage::send_key(KeyType::Id type, int32_t action, bool down)
@@ -262,7 +270,7 @@ namespace ms
 				playable->send_action(KeyAction::actionbyid(action), down);
 				break;
 			case KeyType::Id::SKILL:
-				combat.use_move(action);
+				combat.skill_key(action, down);
 				break;
 			case KeyType::Id::ITEM:
 				player.use_item(action);

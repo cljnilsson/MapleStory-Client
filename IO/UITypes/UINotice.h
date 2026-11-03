@@ -117,6 +117,35 @@ namespace ms
 		int32_t max;
 	};
 
+	// One reset request; values remain server-owned until update packets arrive.
+	class UICashReset : public UINotice
+	{
+	public:
+		UICashReset(int16_t slot, int32_t item);
+		void draw(float alpha) const override;
+		void update() override;
+		Cursor::State send_cursor(bool pressed, Point<int16_t> cursorpos) override;
+		void send_key(int32_t keycode, bool pressed, bool escape) override;
+		UIElement::Type get_type() const override { return TYPE; }
+		static std::string request(int16_t slot, int32_t item, const std::string &values);
+		int16_t get_slot() const { return slot; }
+		int32_t get_item() const { return item; }
+		const std::string &get_values() const { return values.get_text(); }
+		const std::string &get_error() const { return last_error; }
+	protected:
+		Button::State button_pressed(uint16_t buttonid) override;
+	private:
+		void submit();
+		int16_t slot;
+		int32_t item;
+		std::string last_error;
+		Textfield values;
+		Text error;
+		Text prompt;
+		Text confirm_label;
+		Text cancel_label;
+	};
+
 	class UIOk : public UINotice
 	{
 	public:

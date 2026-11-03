@@ -45,6 +45,10 @@ namespace ms
 			ACCEPT_TOS = 7,
 			SET_GENDER = 8,
 			SERVERLIST_REQUEST = 11,
+			VIEW_ALL_CHAR = 13,
+			PICK_ALL_CHAR = 14,
+			VIEW_ALL_PIC_REGISTER = 31,
+			VIEW_ALL_WITH_PIC = 32,
 			SELECT_CHAR = 19,
 			PLAYER_LOGIN = 20,
 			NAME_CHAR = 21,
@@ -60,6 +64,8 @@ namespace ms
 			CHANGE_CHANNEL = 39,
 			ENTER_CASHSHOP = 40,
 			MOVE_PLAYER = 41,
+			CANCEL_CHAIR = 42,
+			USE_CHAIR = 43,
 			CLOSE_ATTACK = 44,
 			RANGED_ATTACK = 45,
 			MAGIC_ATTACK = 46,
@@ -81,6 +87,8 @@ namespace ms
 			SORT_ITEMS = 70,
 			MOVE_ITEM = 71,
 			USE_ITEM = 72,
+			SCRIPTED_ITEM = 78,
+			USE_CASH_ITEM = 79,
 			SCROLL_EQUIP = 86,
 
 			/// Player
@@ -90,6 +98,9 @@ namespace ms
 
 			/// Skill
 			USE_SKILL = 91,
+			CANCEL_SKILL = 92,
+			SKILL_EFFECT = 93,
+			SUMMON_ATTACK = 176,
 
 			/// Gameplay 2
 			PARTY_OPERATION = 124,

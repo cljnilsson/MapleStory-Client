@@ -16,6 +16,8 @@
 //	along with this program.  If not, see <https://www.gnu.org/licenses/>.		//
 //////////////////////////////////////////////////////////////////////////////////
 #include "Char.h"
+#include <nlnx/nx.hpp>
+#include "../HeadlessState.h"
 
 #include "../Data/WeaponData.h"
 
@@ -25,7 +27,34 @@ namespace ms
 {
 	Char::Char(int32_t o, const CharLook &lk, const std::string &name) : MapObject(o), look(lk), look_preview(lk), namelabel(
 			Text(Text::Font::A13M, Text::Alignment::CENTER, Color::Name::WHITE, Text::Background::NAMETAG, name))
-	{}
+	{ effects.set_actor(o); }
+
+	void Char::set_charge(int32_t skill)
+	{
+		charge_id = skill; charge_drawn = false;
+		std::string id = std::to_string(skill);
+		while (id.size() < 7) id = "0" + id;
+		auto skill_source = nl::nx::skill[id.substr(0, id.size() - 4) + ".img"]["skill"][id];
+		auto source = skill_source["prepare"];
+		charge_preparing = skill && bool(source);
+		charge_loop_asset = skill && bool(skill_source["keydown"]);
+		charge_asset = charge_preparing || charge_loop_asset;
+		charge_loop = charge_loop_asset ? Animation(skill_source["keydown"]) : Animation();
+		charge = charge_preparing ? Animation(source) : charge_loop;
+		HeadlessState::presentation(skill ? "model" : "end", "charge", skill, oid);
+	}
+
+	void Char::set_chair(int32_t item)
+	{
+		chair_id = item;
+		chair_drawn = false;
+		auto source = nl::nx::item["Install"]["0301.img"]["0" + std::to_string(item)]["effect"];
+		chair_asset = item && bool(source);
+		chair = chair_asset ? Animation(source) : Animation();
+		set_state(item ? State::SIT : State::STAND);
+		phobj.hspeed = phobj.vspeed = 0;
+		HeadlessState::presentation("model", "chair", item, oid);
+	}
 
 	void Char::draw(double viewx, double viewy, float alpha) const
 	{
@@ -46,7 +75,19 @@ namespace ms
 			color = Color::Code::CWHITE;
 		}
 
+		if (chair_asset)
+		{
+			chair.draw(absp, alpha);
+			if (!chair_drawn && HeadlessState::observing())
+			{ chair_drawn = true; HeadlessState::presentation("render", "chair", chair_id, oid); }
+		}
 		look.draw(DrawArgument(absp, color), alpha);
+		if (HeadlessState::observing() && (observed_action != int(look.get_stance()) || observed_attacking != attacking))
+		{
+			observed_action = int(look.get_stance());
+			observed_attacking = attacking;
+			HeadlessState::presentation("render", "character_action", observed_action, oid);
+		}
 
 		afterimage.draw(look.get_frame(), DrawArgument(absp, facing_right), alpha);
 
@@ -68,6 +109,12 @@ namespace ms
 		chatballoon.draw(absp - Point<int16_t>(0, 85));
 
 		effects.drawabove(absp, alpha);
+		if (charge_asset)
+		{
+			charge.draw(DrawArgument(absp, facing_right), alpha);
+			if (!charge_drawn && HeadlessState::observing())
+			{ charge_drawn = true; HeadlessState::presentation("render", "charge", charge_id, oid); }
+		}
 
 		for (auto &number : damagenumbers)
 			number.draw(viewx, viewy, alpha);
@@ -87,6 +134,9 @@ namespace ms
 				}
 		);
 
+		if (charge_id && charge.update() && charge_preparing && charge_loop_asset)
+		{ charge = charge_loop; charge_preparing = false; charge_drawn = false; }
+		if (chair_id) chair.update();
 		effects.update();
 		chatballoon.update();
 		invincible.update();
@@ -193,7 +243,7 @@ namespace ms
 		int16_t start_y = phobj.get_y() - 60;
 		int16_t x = phobj.get_x() - 10;
 
-		damagenumbers.emplace_back(DamageNumber::Type::TOPLAYER, damage, start_y, x);
+		damagenumbers.emplace_back(DamageNumber::Type::TOPLAYER, damage, start_y, x, oid);
 
 		look.set_alerted(5000);
 		invincible.set_for(2000);
@@ -247,6 +297,7 @@ namespace ms
 		look.set_action(action);
 
 		attacking = true;
+		HeadlessState::presentation("model", "character_action", int(look.get_stance()), oid);
 		look.set_alerted(5000);
 	}
 
@@ -255,6 +306,7 @@ namespace ms
 		look.attack(stance);
 
 		attacking = true;
+		HeadlessState::presentation("model", "character_action", int(look.get_stance()), oid);
 		look.set_alerted(5000);
 	}
 
@@ -263,6 +315,7 @@ namespace ms
 		look.attack(degenerate);
 
 		attacking = true;
+		HeadlessState::presentation("model", "character_action", int(look.get_stance()), oid);
 		look.set_alerted(5000);
 	}
 

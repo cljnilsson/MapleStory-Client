@@ -39,6 +39,7 @@ namespace ms
 	private:
 		static const uint16_t FLASH_TIME = 3'000;
 
+		mutable bool observed_draw = false;
 		Texture icon;
 		IconCover cover;
 		int32_t buffid;
@@ -68,6 +69,7 @@ namespace ms
 		UIElement::Type get_type() const override;
 
 		void add_buff(int32_t buffid, int32_t duration);
+		void remove_buff(int32_t buffid);
 
 	private:
 		std::unordered_map<int32_t, BuffIcon> icons;

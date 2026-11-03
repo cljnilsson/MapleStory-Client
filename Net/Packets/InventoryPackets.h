@@ -18,6 +18,7 @@
 #pragma once
 
 #include "../OutPacket.h"
+#include "../../Audio/Audio.h"
 
 #include "../../Character/Inventory/Inventory.h"
 
@@ -91,6 +92,32 @@ namespace ms
 			write_short(slot);
 			write_int(itemid);
 		}
+	};
+
+	// v83 cash reset body has no timestamp; destination precedes source.
+	class CashResetPacket : public OutPacket
+	{
+	public:
+		CashResetPacket(int16_t slot, int32_t item, int32_t to, int32_t from)
+			: OutPacket(Opcode::USE_CASH_ITEM)
+		{ write_short(slot); write_int(item); write_int(to); write_int(from); }
+	};
+
+	class ScriptedItemPacket : public OutPacket
+	{
+	public:
+		ScriptedItemPacket(int16_t slot, int32_t item) : OutPacket(Opcode::SCRIPTED_ITEM)
+		{ write_time(); write_short(slot); write_int(item); }
+	};
+	class UseChairPacket : public OutPacket
+	{
+	public:
+		UseChairPacket(int32_t item) : OutPacket(Opcode::USE_CHAIR) { write_int(item); }
+	};
+	class CancelChairPacket : public OutPacket
+	{
+	public:
+		CancelChairPacket(int16_t seat) : OutPacket(Opcode::CANCEL_CHAIR) { write_short(seat); }
 	};
 
 	// Requests using a scroll on an equip 

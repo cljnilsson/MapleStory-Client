@@ -16,6 +16,7 @@
 //	along with this program.  If not, see <https://www.gnu.org/licenses/>.		//
 //////////////////////////////////////////////////////////////////////////////////
 #pragma once
+#include <map>
 
 #include "CharEffect.h"
 
@@ -164,8 +165,19 @@ namespace ms
 		// Return a reference to this characters's physics.
 		PhysicsObject &get_phobj();
 
+		State get_observed_state() const { return state; }
+		bool is_attacking() const { return attacking; }
+
 		// Initialize character effects
 		static void init();
+
+		std::map<int, int16_t> foreign_buffs;
+		void set_charge(int32_t skill);
+		int32_t get_charge() const { return charge_id; }
+		bool has_charge_asset() const { return charge_asset; }
+		void set_chair(int32_t item);
+		int32_t get_chair() const { return chair_id; }
+		bool has_chair_asset() const { return chair_asset; }
 
 	protected:
 		Char(int32_t oid, const CharLook &look, const std::string &name);
@@ -185,6 +197,17 @@ namespace ms
 		bool facing_right;
 
 	private:
+		int32_t charge_id = 0;
+		bool charge_asset = false;
+		Animation charge, charge_loop;
+		bool charge_preparing = false, charge_loop_asset = false;
+		mutable bool charge_drawn = false;
+		int32_t chair_id = 0;
+		bool chair_asset = false;
+		Animation chair;
+		mutable bool chair_drawn = false;
+		mutable int observed_action = -1;
+		mutable bool observed_attacking = false;
 		Text namelabel;
 		ChatBalloon chatballoon;
 		EffectLayer effects;

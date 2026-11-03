@@ -21,7 +21,9 @@
 
 namespace ms
 {
-	namespace { std::map<uint8_t, uint8_t> channel_counts; }
+	namespace { std::map<uint8_t, uint8_t> channel_counts; int8_t account_pic = 2; }
+
+	int8_t LoginParser::account_pic_mode() { return account_pic; }
 
 	uint8_t LoginParser::channel_count(uint8_t world)
 	{
@@ -54,7 +56,8 @@ namespace ms
 		recv.skip_int(); // Remove "Select the world you want to play in"
 
 		account.pin = recv.read_bool(); // 0 - Enabled, 1 - Disabled
-		account.pic = recv.read_byte(); // 0 - Register, 1 - Ask, 2 - Disabled
+		account.pic = recv.read_byte();
+		account_pic = account.pic; // 0 - Register, 1 - Ask, 2 - Disabled
 
 		return account;
 	}
@@ -103,13 +106,13 @@ namespace ms
 		return { message, wid };
 	}
 
-	CharEntry LoginParser::parse_charentry(InPacket& recv)
+	CharEntry LoginParser::parse_charentry(InPacket& recv, bool view_all)
 	{
 		int32_t cid = recv.read_int();
 		StatsEntry stats = parse_stats(recv);
 		LookEntry look = parse_look(recv);
 
-		recv.read_bool(); // 'rankinfo' bool
+		if (!view_all) recv.read_bool(); // View All omits the extra byte.
 
 		if (recv.read_bool())
 		{

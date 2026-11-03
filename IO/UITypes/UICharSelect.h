@@ -36,7 +36,7 @@ namespace ms
 		static constexpr bool FOCUSED = false;
 		static constexpr bool TOGGLED = false;
 
-		UICharSelect(std::vector<CharEntry> characters, int8_t characters_count, int32_t slots, int8_t require_pic);
+		UICharSelect(std::vector<CharEntry> characters, int8_t characters_count, int32_t slots, int8_t require_pic, std::map<int32_t, uint8_t> worlds = {}, bool view_all = false);
 
 		void draw(float inter) const override;
 
@@ -61,8 +61,11 @@ namespace ms
 		const std::vector<CharEntry> &get_characters() const { return characters; }
 		int get_selected_character() const { return selected_character; }
 		int get_pic_mode() const { return require_pic; }
+		bool is_view_all() const { return view_all; }
+		int character_world(int32_t id) const { auto it = character_worlds.find(id); return it == character_worlds.end() ? -1 : it->second; }
 		bool select_character(const std::string &name);
 		bool enter_character();
+		bool delete_character(const std::string &name);
 		bool return_to_world();
 
 	protected:
@@ -102,14 +105,18 @@ namespace ms
 			RESETPIC,
 			EDITCHARLIST,
 			BACK,
+			VIEW_ALL,
 			CHARACTER_SLOT0
 		};
 
+		bool view_all;
+		std::map<int32_t, uint8_t> character_worlds;
 		std::vector<CharEntry> characters;
 		int8_t characters_count;
 		int32_t slots;
 		int8_t require_pic;
 		Text version;
+		Text view_all_label;
 		Point<int16_t> pagepos;
 		Point<int16_t> worldpos;
 		Point<int16_t> charinfopos;

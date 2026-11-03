@@ -16,6 +16,9 @@
 //	along with this program.  If not, see <https://www.gnu.org/licenses/>.		//
 //////////////////////////////////////////////////////////////////////////////////
 #include "UICashShop.h"
+#include "../../Net/Handlers/CashShopHandlers.h"
+#include "../../HeadlessState.h"
+#include "../../Graphics/Geometry.h"
 
 #include "../UI.h"
 #include "../Window.h"
@@ -82,8 +85,8 @@ namespace ms
 
 		Charset tab;
 
-		job_label = Text(Text::Font::A11B, Text::Alignment::LEFT, Color::Name::SUPERNOVA, "Illium");
-		name_label = Text(Text::Font::A11B, Text::Alignment::LEFT, Color::Name::WHITE, "ShomeiZekkou");
+		job_label = Text(Text::Font::A11B, Text::Alignment::LEFT, Color::Name::SUPERNOVA, Stage::get().get_player().get_stats().get_jobname());
+		name_label = Text(Text::Font::A11B, Text::Alignment::LEFT, Color::Name::WHITE, Stage::get().get_player().get_stats().get_name());
 
 		promotion_pos = Point<int16_t>(138, 40);
 		sprites.emplace_back(CSPromotionBanner["shadow"], promotion_pos);
@@ -131,22 +134,6 @@ namespace ms
 		for (nl::node item_label : CSEffect)
 			item_labels.emplace_back(item_label);
 
-		items.push_back({ 5220000, Item::Label::HOT,	34000,	11 });
-		items.push_back({ 5220000, Item::Label::HOT,	34000,	11 });
-		items.push_back({ 5220000, Item::Label::HOT,	0,		0 });
-		items.push_back({ 5220000, Item::Label::HOT,	0,		0 });
-		items.push_back({ 5220000, Item::Label::HOT,	10000,	11 });
-		items.push_back({ 5220000, Item::Label::NEW,	0,		0 });
-		items.push_back({ 5220000, Item::Label::SALE,	7000,	0 });
-		items.push_back({ 5220000, Item::Label::NEW,	13440,	0 });
-		items.push_back({ 5220000, Item::Label::NEW,	7480,	0 });
-		items.push_back({ 5220000, Item::Label::NEW,	7480,	0 });
-		items.push_back({ 5220000, Item::Label::NEW,	7480,	0 });
-		items.push_back({ 5220000, Item::Label::NONE,	12000,	11 });
-		items.push_back({ 5220000, Item::Label::NONE,	22000,	11 });
-		items.push_back({ 5220000, Item::Label::NONE,	0,		0 });
-		items.push_back({ 5220000, Item::Label::NONE,	0,		0 });
-		items.push_back({ 5220000, Item::Label::MASTER,	0,		15 });
 
 		for (size_t i = 0; i < MAX_ITEMS; i++)
 		{
@@ -209,11 +196,16 @@ namespace ms
 
 		Point<int16_t> charge_pos = position + Point<int16_t>(107, 388);
 
-		charge_charset.draw("0", charge_pos + Point<int16_t>(0, 30 * 1));
-		charge_charset.draw("3,300", charge_pos + Point<int16_t>(0, 30 * 2));
-		charge_charset.draw("0", charge_pos + Point<int16_t>(0, 30 * 3));
-		charge_charset.draw("8,698,565", charge_pos + Point<int16_t>(0, 30 * 4));
-		charge_charset.draw("0", charge_pos + Point<int16_t>(0, 30 * 5));
+		const auto& cash = CashShopState::get();
+		charge_charset.draw(cash.balances_known ? std::to_string(cash.credit) : "?", charge_pos + Point<int16_t>(0, 30));
+		charge_charset.draw(cash.balances_known ? std::to_string(cash.points) : "?", charge_pos + Point<int16_t>(0, 60));
+		charge_charset.draw(cash.balances_known ? std::to_string(cash.prepaid) : "?", charge_pos + Point<int16_t>(0, 90));
+		ColorBox(700, 160, Color::Name::WHITE, 0.95f).draw(position + Point<int16_t>(145, 375));
+		status_text.draw(position + Point<int16_t>(155, 385));
+		if (drawn_revision != cash.revision) {
+			drawn_revision = cash.revision;
+			HeadlessState::presentation("render", cash.rules.empty() ? "cash_status" : "cash_rules", cash.revision);
+		}
 
 		if (items.size() > 0)
 			item_line.draw(position + Point<int16_t>(139, 566), inter);
@@ -258,6 +250,19 @@ namespace ms
 
 	void UICashShop::update()
 	{
+		const auto& cash = CashShopState::get();
+		if (status_revision != cash.revision)
+		{
+			status_revision = cash.revision;
+			std::string text = "NX Credit: " + std::to_string(cash.credit) + "  Maple Points: " + std::to_string(cash.points)
+				+ "  NX Prepaid: " + std::to_string(cash.prepaid) + "\\nCash inventory: " + std::to_string(cash.inventory.size()) + "  Gifts: " + std::to_string(cash.gifts.size())
+				+ "\\nResult: " + cash.result;
+			if (cash.message >= 0) text += " (server code " + std::to_string(cash.message) + ")";
+			if (!cash.rules.empty()) text += "\\n" + std::string(cash.rules == "name" ? "Name change rules" : "World transfer rules")
+				+ (cash.rules_error == 0 ? ": eligible" : ": unavailable (server code " + std::to_string(cash.rules_error) + ")");
+			status_text.change_text(text);
+		}
+
 		UIElement::update();
 
 		mvp_gauge.update(mvp_exp);
@@ -276,6 +281,9 @@ namespace ms
 			return Button::State::PRESSED;
 		case Buttons::BtExit:
 		{
+			auto& cash = CashShopState::get();
+			if (!cash.opened || !cash.pending.empty()) return Button::State::NORMAL;
+			cash.pending = "exit";
 			uint16_t width = Setting<Width>::get().load();
 			uint16_t height = Setting<Height>::get().load();
 
@@ -368,6 +376,13 @@ namespace ms
 	UIElement::Type UICashShop::get_type() const
 	{
 		return TYPE;
+	}
+
+	bool UICashShop::request_exit()
+	{
+		if (!CashShopState::get().opened || !CashShopState::get().pending.empty()) return false;
+		button_pressed(Buttons::BtExit);
+		return true;
 	}
 
 	void UICashShop::exit_cashshop()

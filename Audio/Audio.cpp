@@ -195,7 +195,7 @@ namespace ms
 
 		auto data = reinterpret_cast<const char *>(ad.data());
 
-		if (data)
+		if (data && ad.length() > 82)
 		{
 			size_t id = ad.id();
 
@@ -256,6 +256,8 @@ namespace ms
 		{
 			nl::audio ad = nl::nx::sound.resolve(path);
 			auto data = reinterpret_cast<const char *>(ad.data());
+			// Missing/short NX audio must not underflow the payload length passed to the decoder.
+			if (!data || ad.length() <= 82) return;
 			audiodb[path] = new membuf(data + 82, ad.length() - 82);
 		}
 
@@ -281,6 +283,8 @@ namespace ms
 		{
 			nl::audio ad = nl::nx::sound.resolve(path);
 			auto data = reinterpret_cast<const char *>(ad.data());
+			// Missing/short NX audio must not underflow the payload length passed to the decoder.
+			if (!data || ad.length() <= 82) return;
 			audiodb[path] = new membuf(data + 82, ad.length() - 82);
 		}
 

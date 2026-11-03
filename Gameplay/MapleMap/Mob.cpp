@@ -414,6 +414,7 @@ namespace ms
 			percent = 0;
 
 		hppercent = percent;
+		hp_known = true;
 		showhp.set_for(2000);
 	}
 

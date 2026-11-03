@@ -28,7 +28,7 @@ namespace ms
 	{
 		/// Locate sources
 		std::string strid = string_format::extend_id(id, 7);
-		std::string jobid = strid.substr(0, 3);
+		std::string jobid = strid.substr(0, strid.size() - 4);
 		nl::node src = nl::nx::skill[jobid + ".img"]["skill"][strid];
 		nl::node strsrc = nl::nx::string["Skill.img"][strid];
 
@@ -98,6 +98,7 @@ namespace ms
 
 	int32_t SkillData::flags_of(int32_t id) const
 	{
+		if (id == 3121004 || id == 3221001 || id == 5221004 || id == 13111002 || id == 3001004 || id == 3001005 || id == 2201005 || id == 2221001 || id == 2121001 || id == 2321001) return ATTACK | RANGED;
 		static const std::unordered_map<int32_t, int32_t> skill_flags =
 				{
 						// Beginner

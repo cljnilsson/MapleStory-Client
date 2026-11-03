@@ -45,6 +45,15 @@ namespace ms
 		void handle(InPacket& recv) const override;
 	};
 
+	class ViewAllCharHandler : public PacketHandler
+	{
+	public:
+		static bool request();
+		static void reset();
+	private:
+		void handle(InPacket& recv) const override;
+	};
+
 	// Handles the packet which contains the IP of a channel server to connect to
 	class ServerIPHandler : public PacketHandler
 	{

@@ -47,9 +47,13 @@ namespace ms
 		UIElement::Type get_type() const override;
 
 		void exit_cashshop();
+		bool request_exit();
 
 	private:
 		void update_items();
+		Text status_text{Text::Font::A12M, Text::Alignment::LEFT, Color::Name::MINESHAFT, "", 670};
+		uint64_t status_revision = uint64_t(-1);
+		mutable uint64_t drawn_revision = uint64_t(-1);
 
 		static constexpr uint8_t MAX_ITEMS = 7u * 2u + 1u;
 

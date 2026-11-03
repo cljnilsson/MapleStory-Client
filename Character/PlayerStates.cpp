@@ -271,6 +271,8 @@ namespace ms
 	{
 		if (down)
 		{
+			if (player.get_chair() && (ka == KeyAction::LEFT || ka == KeyAction::RIGHT || ka == KeyAction::JUMP || ka == KeyAction::UP))
+			{ player.stand_up(); return; }
 			switch (ka)
 			{
 				case KeyAction::Id::LEFT:

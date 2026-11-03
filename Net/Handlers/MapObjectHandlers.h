@@ -21,6 +21,8 @@
 
 namespace ms
 {
+	struct ShowChairHandler : public PacketHandler { void handle(InPacket &recv) const override; };
+	struct CancelChairHandler : public PacketHandler { void handle(InPacket &recv) const override; };
 	// Spawn a character on the stage
 	// Opcode: SPAWN_CHAR(160)
 	class SpawnCharHandler : public PacketHandler

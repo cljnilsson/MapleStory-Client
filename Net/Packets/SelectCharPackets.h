@@ -26,9 +26,10 @@ namespace ms
 	class SelectCharPacket : public OutPacket
 	{
 	public:
-		SelectCharPacket(int32_t cid) : OutPacket(OutPacket::Opcode::SELECT_CHAR)
+		SelectCharPacket(int32_t cid, int world = -1) : OutPacket(world < 0 ? OutPacket::Opcode::SELECT_CHAR : OutPacket::Opcode::PICK_ALL_CHAR)
 		{
 			write_int(cid);
+			if (world >= 0) write_int(world);
 			write_hardware_info();
 		}
 	};
@@ -38,11 +39,12 @@ namespace ms
 	class RegisterPicPacket : public OutPacket
 	{
 	public:
-		RegisterPicPacket(int32_t cid, const std::string& pic) : OutPacket(OutPacket::Opcode::REGISTER_PIC)
+		RegisterPicPacket(int32_t cid, const std::string& pic, int world = -1) : OutPacket(world < 0 ? OutPacket::Opcode::REGISTER_PIC : OutPacket::Opcode::VIEW_ALL_PIC_REGISTER)
 		{
 			skip(1);
 
 			write_int(cid);
+			if (world >= 0) write_int(world);
 			write_hardware_info();
 			write_string(pic);
 		}
@@ -53,10 +55,11 @@ namespace ms
 	class SelectCharPicPacket : public OutPacket
 	{
 	public:
-		SelectCharPicPacket(const std::string& pic, int32_t cid) : OutPacket(OutPacket::Opcode::SELECT_CHAR_PIC)
+		SelectCharPicPacket(const std::string& pic, int32_t cid, int world = -1) : OutPacket(world < 0 ? OutPacket::Opcode::SELECT_CHAR_PIC : OutPacket::Opcode::VIEW_ALL_WITH_PIC)
 		{
 			write_string(pic);
 			write_int(cid);
+			if (world >= 0) write_int(world);
 			write_hardware_info();
 		}
 	};

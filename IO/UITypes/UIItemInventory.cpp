@@ -340,13 +340,17 @@ namespace ms
 			{
 				switch (tab)
 				{
+					case InventoryType::Id::CASH:
+						if (item_id / 10000 == 505) UI::get().emplace<UICashReset>(slot, item_id);
+						break;
 					case InventoryType::Id::EQUIP:
 						if (can_wear_equip(slot))
 							EquipItemPacket(slot, inventory.find_equipslot(item_id)).dispatch();
 
 						break;
+					case InventoryType::Id::SETUP:
 					case InventoryType::Id::USE:
-						UseItemPacket(slot, item_id).dispatch();
+						Stage::get().get_player().use_inventory_item(tab, slot, item_id / 10000 == 243);
 						break;
 				}
 			}

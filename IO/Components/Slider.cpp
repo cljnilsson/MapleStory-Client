@@ -126,7 +126,8 @@ namespace ms
 		int16_t height = dbase.height();
 		int16_t maxheight = vertical.first() + height;
 
-		while (maxheight < vertical.second())
+		// Missing skin art has zero height; never loop forever while tiling it.
+		while (height > 0 && maxheight < vertical.second())
 		{
 			dbase.draw(position + Point<int16_t>(start.x(), maxheight));
 

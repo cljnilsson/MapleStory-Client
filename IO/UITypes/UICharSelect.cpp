@@ -34,6 +34,7 @@
 #include "../../Character/Job.h"
 
 #include "../../Net/Packets/SelectCharPackets.h"
+#include "../../Net/Handlers/LoginHandlers.h"
 
 #define NOMINMAX
 #ifdef WIN32
@@ -44,7 +45,7 @@
 
 namespace ms
 {
-	UICharSelect::UICharSelect(std::vector<CharEntry> c, int8_t char_count, int32_t s, int8_t rp) : UIElement(
+	UICharSelect::UICharSelect(std::vector<CharEntry> c, int8_t char_count, int32_t s, int8_t rp, std::map<int32_t, uint8_t> worlds, bool all) : UIElement(
 			Point<int16_t>(0, 0), Point<int16_t>(800, 600)),
 																									characters(c),
 																									characters_count(
@@ -52,6 +53,12 @@ namespace ms
 																									slots(s),
 																									require_pic(rp)
 	{
+		view_all = all;
+		view_all_label = Text(Text::Font::A11M, Text::Alignment::LEFT, Color::Name::LEMONGRASS,
+			view_all ? "All characters" : "View all characters");
+		buttons[Buttons::VIEW_ALL] = std::make_unique<AreaButton>(Point<int16_t>(521, 300), Point<int16_t>(180, 24));
+		buttons[Buttons::VIEW_ALL]->set_active(!view_all);
+		character_worlds = std::move(worlds);
 		burning_character = true;
 
 		std::string version_text = Configuration::get().get_version();
@@ -96,7 +103,7 @@ namespace ms
 
 		world_dimensions = Texture(selectWorld).get_dimensions();
 
-		uint16_t world;
+		uint16_t world = 0;
 		uint8_t world_id = Configuration::get().get_worldid();
 		uint8_t channel_id = Configuration::get().get_channelid();
 
@@ -199,7 +206,7 @@ namespace ms
 				select_last_slot();
 		}
 
-		if (Configuration::get().get_auto_login())
+		if (!is_view_all() && Configuration::get().get_auto_login())
 		{
 			SelectCharPicPacket(
 					Configuration::get().get_auto_pic(),
@@ -238,6 +245,7 @@ namespace ms
             v83_cloud_front.draw(position + Point<int16_t>(301, 407));
 
 		version.draw(position + Point<int16_t>(707, 1));
+		view_all_label.draw(position + Point<int16_t>(521, 300));
 		charslot.draw(position + Point<int16_t>(589, 106 - charslot_y));
 		chatslotlabel.draw(position + Point<int16_t>(700, 110 - charslot_y));
 
@@ -679,14 +687,29 @@ namespace ms
 		return true;
 	}
 
+	bool UICharSelect::delete_character(const std::string &name)
+	{
+		// Require the exact selected name so stale selection cannot delete another character.
+		if (is_view_all() || !is_active() || selected_character >= characters.size() || require_pic < 0 || require_pic > 2
+			|| characters[selected_character].stats.name != name)
+			return false;
+		button_pressed(Buttons::CHARACTER_DELETE);
+		return true;
+	}
+
 	Button::State UICharSelect::button_pressed(uint16_t buttonid)
 	{
 		switch (buttonid)
 		{
+			case Buttons::VIEW_ALL:
+				ViewAllCharHandler::request();
+				break;
 			case Buttons::CHARACTER_SELECT:
 			{
 				Setting<DefaultCharacter>::get().save(selected_character);
 				int32_t id = characters[selected_character].id;
+				int world = character_world(id);
+				if (world >= 0) Configuration::get().set_worldid(world);
 
 				switch (require_pic)
 				{
@@ -702,21 +725,22 @@ namespace ms
 						break;
 					case 1:
 					{
-						std::function<void(const std::string &)> onok = [id](const std::string &pic)
+						std::function<void(const std::string &)> onok = [id, world](const std::string &pic)
 						{
-							SelectCharPicPacket(pic, id).dispatch();
+							SelectCharPicPacket(pic, id, world).dispatch();
 						};
 
 						UI::get().emplace<UISoftKey>(onok);
 					}
 						break;
 					case 2:
-						SelectCharPacket(id).dispatch();
+						SelectCharPacket(id, world).dispatch();
 						break;
 				}
 			}
 				break;
 			case Buttons::CHARACTER_NEW:
+				if (is_view_all()) return Button::State::NORMAL;
 				Sound(Sound::Name::SCROLLUP).play();
 
 				deactivate();
@@ -736,8 +760,11 @@ namespace ms
                 UI::get().emplace<UIExplorerCreation>();
 				break;
 			case Buttons::CHARACTER_DELETE:
+				if (is_view_all()) return Button::State::NORMAL;
 			{
 				int32_t id = characters[selected_character].id;
+				int world = character_world(id);
+				if (world >= 0) Configuration::get().set_worldid(world);
 
 				switch (require_pic)
 				{
@@ -900,7 +927,8 @@ namespace ms
 
 		buttons[Buttons::CHARACTER_SELECT]->set_active(character_found);
 		buttons[Buttons::CHARACTER_DELETE]->set_state(
-				character_found ? Button::State::NORMAL : Button::State::DISABLED);
+				character_found && !is_view_all() ? Button::State::NORMAL : Button::State::DISABLED);
+		if (is_view_all()) buttons[Buttons::CHARACTER_NEW]->set_state(Button::State::DISABLED);
 	}
 
 	bool UICharSelect::select_character(const std::string &name)
@@ -1084,7 +1112,7 @@ namespace ms
 		{
 			RegisterPicPacket(
 					characters[selected_character].id,
-					entered_pic
+					entered_pic, character_world(characters[selected_character].id)
 			).dispatch();
 		}
 	}

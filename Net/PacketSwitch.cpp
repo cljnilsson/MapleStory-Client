@@ -42,6 +42,7 @@ namespace ms
 		/// Login 1
 		LOGIN_RESULT = 0,
 		SERVERSTATUS = 3,
+		VIEW_ALL_CHAR = 8,
 		SERVERLIST = 10,
 		CHARLIST = 11,
 		SERVER_IP = 12,
@@ -60,6 +61,7 @@ namespace ms
 		/// Player 2
 		CHANGE_CHANNEL = 16,
 		CHANGE_STATS = 31,
+		GIVE_FOREIGN_BUFF = 199, CANCEL_FOREIGN_BUFF = 200,
 		GIVE_BUFF = 32,
 		CANCEL_BUFF = 33,
 		RECALCULATE_STATS = 35,
@@ -99,6 +101,9 @@ namespace ms
 		ATTACKED_RANGED = 187,
 		ATTACKED_MAGIC = 188,
 
+		SHOW_CHAIR = 196,
+		CANCEL_CHAIR = 205,
+		SPAWN_SUMMON = 175, REMOVE_SUMMON = 176, SUMMON_ATTACK = 178, SKILL_EFFECT = 190, CANCEL_SKILL_EFFECT = 191,
 		UPDATE_CHARLOOK = 197,
 		SHOW_FOREIGN_EFFECT = 198,
 		SHOW_ITEM_GAIN_INCHAT = 206, // TODO: Rename this (Terribly named)
@@ -148,6 +153,7 @@ namespace ms
 		emplace<SERVERSTATUS, ServerStatusHandler>();
 		emplace<SERVERLIST, ServerlistHandler>();
 		emplace<CHARLIST, CharlistHandler>();
+		emplace<VIEW_ALL_CHAR, ViewAllCharHandler>();
 		emplace<SERVER_IP, ServerIPHandler>();
 		emplace<CHARNAME_RESPONSE, CharnameResponseHandler>();
 		emplace<ADD_NEWCHAR_ENTRY, AddNewCharEntryHandler>();
@@ -161,6 +167,8 @@ namespace ms
 		emplace<SPAWN_CHAR, SpawnCharHandler>();
 		emplace<CHAR_MOVED, CharMovedHandler>();
 		emplace<UPDATE_CHARLOOK, UpdateCharLookHandler>();
+		emplace<SHOW_CHAIR, ShowChairHandler>();
+		emplace<CANCEL_CHAIR, CancelChairHandler>();
 		emplace<SHOW_FOREIGN_EFFECT, ShowForeignEffectHandler>();
 		emplace<REMOVE_CHAR, RemoveCharHandler>();
 		emplace<SPAWN_PET, SpawnPetHandler>();
@@ -190,6 +198,13 @@ namespace ms
 		emplace<KEYMAP, KeymapHandler>();
 		emplace<SKILL_MACROS, SkillMacrosHandler>();
 		emplace<CHANGE_STATS, ChangeStatsHandler>();
+		emplace<SPAWN_SUMMON, SpawnSummonHandler>();
+		emplace<REMOVE_SUMMON, RemoveSummonHandler>();
+		emplace<SUMMON_ATTACK, SummonAttackHandler>();
+		emplace<SKILL_EFFECT, SkillEffectHandler>();
+		emplace<CANCEL_SKILL_EFFECT, CancelSkillEffectHandler>();
+		emplace<GIVE_FOREIGN_BUFF, ForeignBuffHandler>();
+		emplace<CANCEL_FOREIGN_BUFF, CancelForeignBuffHandler>();
 		emplace<GIVE_BUFF, ApplyBuffHandler>();
 		emplace<CANCEL_BUFF, CancelBuffHandler>();
 		emplace<RECALCULATE_STATS, RecalculateStatsHandler>();
@@ -220,6 +235,10 @@ namespace ms
 
 		// Cash Shop
 		emplace<SET_CASH_SHOP, SetCashShopHandler>();
+		emplace<0x144, CashBalanceHandler>();
+		emplace<0x145, CashOperationHandler>();
+		emplace<0x149, NameRulesHandler>();
+		emplace<0x14b, WorldRulesHandler>();
 
 		// TODO: New handlers, they need coded and moved to a proper file.
 		emplace<CHECK_SPW_RESULT, CheckSpwResultHandler>();

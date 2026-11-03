@@ -130,6 +130,9 @@ namespace ms
 		// Return all occupied slots as (slot, item id, count) for one inventory tab.
 		std::vector<std::array<int32_t, 3>> list_slots(InventoryType::Id type) const;
 
+		Optional<const Item> get_item(InventoryType::Id type, int16_t slot) const;
+		bool request_move(InventoryType::Id type, int16_t source, int16_t dest, int16_t quantity) const;
+
 		// Return a pointer to an equip
 		Optional<const Equip> get_equip(InventoryType::Id type, int16_t slot) const;
 

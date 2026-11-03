@@ -18,6 +18,7 @@
 #pragma once
 
 #include "Sprite.h"
+#include "../HeadlessState.h"
 
 #include "../Constants.h"
 
@@ -30,6 +31,8 @@ namespace ms
 	class EffectLayer
 	{
 	public:
+		void set_actor(int32_t value) { actor = value; }
+
 		void drawbelow(Point<int16_t> position, float alpha) const;
 
 		void drawabove(Point<int16_t> position, float alpha) const;
@@ -48,26 +51,35 @@ namespace ms
 		class Effect
 		{
 		public:
-			Effect(const Animation &a, const DrawArgument &args, float s) : sprite(a, args), speed(s)
+			Effect(const Animation &a, const DrawArgument &args, float s, int32_t owner) : actor(owner), observation(HeadlessState::presentation("model", "effect", 0, owner)), sprite(a, args), speed(s)
 			{}
 
 			void draw(Point<int16_t> position, float alpha) const
 			{
 				sprite.draw(position, alpha);
+				if (observation && !observed_draw)
+				{
+					HeadlessState::presentation("render", "effect", 0, actor, observation);
+					observed_draw = true;
+				}
 			}
 
 			bool update()
 			{
-				return sprite.update(
-						static_cast<uint16_t>(Constants::TIMESTEP * speed)
-				);
+				bool ended = sprite.update(static_cast<uint16_t>(Constants::TIMESTEP * speed));
+				if (ended && observation) HeadlessState::presentation("end", "effect", 0, actor, observation);
+				return ended;
 			}
 
 		private:
+			int32_t actor = 0;
+			uint64_t observation = 0;
+			mutable bool observed_draw = false;
 			Sprite sprite;
 			float speed;
 		};
 
+		int32_t actor = 0;
 		std::map<int8_t, std::list<Effect>> effects;
 	};
 }

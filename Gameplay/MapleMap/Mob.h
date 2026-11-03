@@ -106,6 +106,11 @@ namespace ms
 		// Check if this mob is still alive.
 		bool is_alive() const;
 
+		bool hp_is_known() const { return hp_known; }
+		int get_hp_percent() const { return hppercent; }
+		int get_stance() const { return stance; }
+		bool is_dying() const { return dying; }
+
 		int32_t get_mobid() const { return id; }
 
 		// Return the head position.
@@ -193,6 +198,7 @@ namespace ms
 		bool flip;
 		FlyDirection flydirection;
 		float walkforce;
+		bool hp_known = false;
 		int8_t hppercent;
 		bool fading;
 		bool fadein;

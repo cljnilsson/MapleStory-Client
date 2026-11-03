@@ -52,4 +52,19 @@ namespace ms
 	public:
 		MagicAttackHandler() : AttackHandler(Attack::Type::MAGIC) {}
 	};
+
+	class SkillEffectHandler : public PacketHandler { void handle(InPacket &recv) const override; };
+	class CancelSkillEffectHandler : public PacketHandler { void handle(InPacket &recv) const override; };
+	class SpawnSummonHandler : public PacketHandler { void handle(InPacket &recv) const override; };
+	class RemoveSummonHandler : public PacketHandler { void handle(InPacket &recv) const override; };
+	class SummonAttackHandler : public PacketHandler { void handle(InPacket &recv) const override; };
+
+	class ForeignBuffHandler : public PacketHandler
+	{
+	public:
+		explicit ForeignBuffHandler(bool cancel = false) : cancel(cancel) {}
+		void handle(InPacket &recv) const override;
+	private: bool cancel;
+	};
+	class CancelForeignBuffHandler : public ForeignBuffHandler { public: CancelForeignBuffHandler() : ForeignBuffHandler(true) {} };
 }

@@ -57,7 +57,7 @@ namespace ms
 		if (!attacking)
 		{
 			uint8_t laststate = lastmove.newstate;
-			set_state(laststate);
+			set_state(get_chair() ? uint8_t(State::SIT) : laststate);
 		}
 
 		phobj.hspeed = lastmove.xpos - phobj.crnt_x();
@@ -100,7 +100,7 @@ namespace ms
 		look = newlook;
 
 		uint8_t laststate = lastmove.newstate;
-		set_state(laststate);
+		set_state(get_chair() ? uint8_t(State::SIT) : laststate);
 	}
 
 	int8_t OtherChar::get_integer_attackspeed() const

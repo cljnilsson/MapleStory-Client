@@ -60,6 +60,8 @@ namespace ms
 			}
 		}
 
+		void clear() { queue = {}; time = 0; }
+
 	private:
 		struct Timed
 		{

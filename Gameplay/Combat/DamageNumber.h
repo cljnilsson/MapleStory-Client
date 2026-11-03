@@ -38,7 +38,7 @@ namespace ms
 			TOPLAYER
 		};
 
-		DamageNumber(Type type, int32_t damage, int16_t starty, int16_t x = 0);
+		DamageNumber(Type type, int32_t damage, int16_t starty, int16_t x = 0, int32_t actor = 0);
 
 		DamageNumber();
 
@@ -57,6 +57,9 @@ namespace ms
 
 		static constexpr uint16_t FADE_TIME = 500;
 
+		int32_t actor = 0;
+		uint64_t observation = 0;
+		mutable bool observed_draw = false;
 		Type type;
 		bool miss;
 		bool multiple;

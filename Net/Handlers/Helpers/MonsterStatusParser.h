@@ -20,17 +20,23 @@
 #include "../../InPacket.h"
 
 #include <cstdint>
+#include <sstream>
+#include "../../../HeadlessState.h"
 
 namespace ms::MonsterStatusParser
 {
 	// Java MaplePacketCreator.encodeTemporary: four mask words, one 8-byte
 	// record for each set status, then optional reflect counters and probability.
-	inline void skip_temporary(InPacket& recv)
+	inline void skip_temporary(InPacket& recv, int32_t oid = 0)
 	{
 		const uint32_t firstLow = static_cast<uint32_t>(recv.read_int());
 		const uint32_t firstHigh = static_cast<uint32_t>(recv.read_int());
 		const uint32_t secondLow = static_cast<uint32_t>(recv.read_int());
 		const uint32_t secondHigh = static_cast<uint32_t>(recv.read_int());
+		HeadlessState::presentation("packet", "mob_status_first_low", firstLow, oid);
+		HeadlessState::presentation("packet", "mob_status_first_high", firstHigh, oid);
+		HeadlessState::presentation("packet", "mob_status_second_low", secondLow, oid);
+		HeadlessState::presentation("packet", "mob_status_second_high", secondHigh, oid);
 		const uint32_t first = firstLow | firstHigh;
 		const uint32_t second = secondLow | secondHigh;
 
@@ -47,7 +53,24 @@ namespace ms::MonsterStatusParser
 			remaining &= remaining - 1;
 			++count;
 		}
-		recv.skip(count * 8);
+		std::ostringstream status;
+		if (std::getenv("MS_HEADLESS_DIR")) status << "{\"mask\":[" << firstLow << ',' << firstHigh << ',' << secondLow << ',' << secondHigh << "],\"records\":[";
+		for (size_t i = 0; i < count; ++i)
+		{
+			const auto value = recv.read_short();
+			const auto source = recv.read_int();
+			const auto duration = recv.read_short();
+			if (std::getenv("MS_HEADLESS_DIR"))
+			{
+				if (i) status << ',';
+				status << "{\"value\":" << value << ",\"source\":" << source << ",\"duration_raw\":" << duration << '}';
+			}
+		}
+		if (std::getenv("MS_HEADLESS_DIR"))
+		{
+			status << "]}";
+			HeadlessState::mob_status(oid, status.str());
+		}
 
 		const bool weaponReflect = (first & 0x20000000u) != 0;
 		const bool magicReflect = (first & 0x40000000u) != 0;

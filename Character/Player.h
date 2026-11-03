@@ -69,6 +69,8 @@ namespace ms
 
 		// Use the item from the player's inventory with the given id.
 		void use_item(int32_t itemid);
+		bool use_inventory_item(InventoryType::Id type, int16_t slot, bool scripted);
+		bool stand_up();
 
 		// Return if the player is attacking
 		bool is_attacking() const;
@@ -94,6 +96,8 @@ namespace ms
 		// Apply a buff to the player
 		void give_buff(Buff buff);
 
+		const EnumMap<Buffstat::Id, Buff> &get_buffs() const { return buffs; }
+
 		// Cancel a buff.
 		void cancel_buff(Buffstat::Id stat);
 
@@ -102,6 +106,9 @@ namespace ms
 
 		// Change a skill
 		void change_skill(int32_t skill_id, int32_t level, int32_t masterlevel, int64_t expiration);
+
+		// Replace character data supplied by a full field-entry packet.
+		void reset_field_data(const StatsEntry &entry);
 
 		// Put a skill on cooldown.
 		void add_cooldown(int32_t skill_id, int32_t time);

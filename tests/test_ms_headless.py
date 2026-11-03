@@ -1,6 +1,8 @@
-"""Screen-driven login behavior without starting a graphical client."""
+"""Login, action transport and observation controls without a graphical client."""
 
 import argparse
+import json
+import os
 import contextlib
 import fcntl
 import io
@@ -300,6 +302,18 @@ class ActionTransportTests(unittest.TestCase):
             item.stop()
         self.tempdir.cleanup()
 
+    def test_collection_outcomes_compare_json_without_ordering(self):
+        self.assertTrue(ms_headless.state_matches("drops==[]", {"drops": []}))
+        self.assertFalse(ms_headless.state_matches("inventory.use[0].count==23", {"inventory": {"use": [{"count": 20}]}}))
+        self.assertTrue(ms_headless.state_matches("inventory.use[0].count==20", {"inventory": {"use": [{"count": 20}]}}))
+        with self.assertRaises(SystemExit):
+            ms_headless.state_matches("drops nonsense", {"drops": [1]})
+        self.assertFalse(ms_headless.state_matches("drops==[]", {"drops": [{"oid": 1}]}))
+        self.assertTrue(ms_headless.state_matches('item=={"count":3}', {"item": {"count": 3}}))
+        self.assertFalse(ms_headless.state_matches('item>{"count":3}', {"item": {"count": 4}}))
+        self.assertFalse(ms_headless.state_matches("drops==garbage", {"drops": []}))
+        self.assertFalse(ms_headless.state_matches("ready==anything", {"ready": False}))
+
     def test_pic_private_request_and_redacted_result(self):
         secret = "864209"
         def accepted(*_args, **_kwargs):
@@ -398,6 +412,54 @@ class ActionTransportTests(unittest.TestCase):
         self.assertEqual(error.getvalue(), "")
         read_state.assert_not_called()
 
+    def test_view_all_batch_stops_after_rejected_request(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with (patch.object(ms_headless, "STATE_DIR", Path(directory)),
+                  patch.object(ms_headless, "read_state", return_value={}),
+                  patch.object(ms_headless, "dispatch_action", return_value={
+                      "dispatch": {"ok": False}, "completion": "not_dispatched"}) as dispatch,
+                  patch.object(ms_headless.sys, "stdin", io.StringIO(
+                      '[["view-all"],["character-choose","Test"]]')),
+                  contextlib.redirect_stdout(io.StringIO())):
+                with self.assertRaises(SystemExit) as raised:
+                    ms_headless.cmd_batch(argparse.Namespace(timeout=2))
+                self.assertEqual(raised.exception.code, 1)
+                dispatch.assert_called_once_with({}, "view-all", [], 2, None, None)
+
+    def test_paused_export_does_not_satisfy_stale_state_predicate(self):
+        snapshot = {"schema": 1, "session_id": "test", "seq": 1,
+                    "screen": "in_game", "observation": {"export_paused": True}}
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "state.json"
+            state_path.write_text(json.dumps(snapshot))
+            os.utime(state_path, (1, 1))
+            with (patch.object(ms_headless, "STATE_DIR", Path(directory)),
+                  patch.object(ms_headless, "client_alive", return_value=True),
+                  contextlib.redirect_stderr(io.StringIO())):
+                self.assertEqual(ms_headless.snapshot_diagnostic(
+                    snapshot, {"session_id": "test"})["health"], "paused")
+                with self.assertRaises(SystemExit) as raised:
+                    ms_headless.wait_for({"session_id": "test"}, 1,
+                                         state_expr="screen==in_game")
+                self.assertIn("export is paused", str(raised.exception))
+
+    def test_observation_batch_stops_after_rejected_resume(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with (patch.object(ms_headless, "STATE_DIR", Path(directory)),
+                  patch.object(ms_headless, "read_state", return_value={}),
+                  patch.object(ms_headless, "dispatch_action", side_effect=[
+                      {"dispatch": {"ok": True}, "completion": "not_requested"},
+                      {"dispatch": {"ok": False}, "completion": "not_dispatched"}]) as dispatch,
+                  patch.object(ms_headless.sys, "stdin", io.StringIO(
+                      '[["observe","pause"],["observe","resume"],["attack"]]')),
+                  contextlib.redirect_stdout(io.StringIO())):
+                with self.assertRaises(SystemExit) as raised:
+                    ms_headless.cmd_batch(argparse.Namespace(timeout=2))
+                self.assertEqual(raised.exception.code, 1)
+                self.assertEqual(
+                    [(call.args[1], call.args[2]) for call in dispatch.call_args_list],
+                    [("observe", ["pause"]), ("observe", ["resume"])])
+
     def test_batch_dispatches_channel_change(self):
         with tempfile.TemporaryDirectory() as directory:
             with (patch.object(ms_headless, "STATE_DIR", Path(directory)),
@@ -451,6 +513,48 @@ class ActionTransportTests(unittest.TestCase):
                     ms_headless.cmd_batch(argparse.Namespace(timeout=2))
                 self.assertEqual(raised.exception.code, 1)
                 dispatch.assert_called_once_with({}, "pic-cancel", [], 2, None, None)
+
+    def test_rejected_character_delete_stops_batch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with (patch.object(ms_headless, "STATE_DIR", Path(directory)),
+                  patch.object(ms_headless, "read_state", return_value={}),
+                  patch.object(ms_headless, "dispatch_action", return_value={
+                      "dispatch": {"ok": False}, "completion": "not_dispatched"}) as dispatch,
+                  patch.object(ms_headless.sys, "stdin", io.StringIO(
+                      '[["character-delete","Test"],["login-notice","confirm"]]')),
+                  contextlib.redirect_stdout(io.StringIO())):
+                with self.assertRaises(SystemExit) as raised:
+                    ms_headless.cmd_batch(argparse.Namespace(timeout=2))
+                self.assertEqual(raised.exception.code, 1)
+                dispatch.assert_called_once_with({}, "character-delete", ["Test"], 2, None, None)
+
+    def test_logout_batch_stops_before_confirm_after_rejected_open(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with (patch.object(ms_headless, "STATE_DIR", Path(directory)),
+                  patch.object(ms_headless, "read_state", return_value={}),
+                  patch.object(ms_headless, "dispatch_action", return_value={
+                      "dispatch": {"ok": False}, "completion": "not_dispatched"}) as dispatch,
+                  patch.object(ms_headless.sys, "stdin", io.StringIO(
+                      '[["logout","open"],["logout","confirm"]]')),
+                  contextlib.redirect_stdout(io.StringIO())):
+                with self.assertRaises(SystemExit) as raised:
+                    ms_headless.cmd_batch(argparse.Namespace(timeout=2))
+                self.assertEqual(raised.exception.code, 1)
+                dispatch.assert_called_once_with({}, "logout", ["open"], 2, None, None)
+
+    def test_rejected_unlearned_skill_stops_before_charge_release(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with (patch.object(ms_headless, "STATE_DIR", Path(directory)),
+                  patch.object(ms_headless, "read_state", return_value={}),
+                  patch.object(ms_headless, "dispatch_action", return_value={
+                      "dispatch": {"ok": False}, "completion": "not_dispatched"}) as dispatch,
+                  patch.object(ms_headless.sys, "stdin", io.StringIO(
+                      '[["skill-down",3121004],["skill-up",3121004]]')),
+                  contextlib.redirect_stdout(io.StringIO())):
+                with self.assertRaises(SystemExit) as raised:
+                    ms_headless.cmd_batch(argparse.Namespace(timeout=2))
+                self.assertEqual(raised.exception.code, 1)
+                dispatch.assert_called_once_with({}, "skill-down", ["3121004"], 2, None, None)
 
     def test_batch_stops_at_first_rejected_action(self):
         args = argparse.Namespace(timeout=2)

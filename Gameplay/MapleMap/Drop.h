@@ -33,6 +33,13 @@ namespace ms
 
 		Rectangle<int16_t> bounds() const;
 
+		int32_t get_amount() const { return amount; }
+		void set_amount(int32_t value) { amount = value; }
+		int32_t get_owner() const { return owner; }
+		int get_pickup_type() const { return pickuptype; }
+		int get_state() const { return state; }
+		bool can_pick_up() const { return state == FLOATING; }
+
 	protected:
 		Drop(int32_t oid, int32_t owner, Point<int16_t> start,
 			 Point<int16_t> dest, int8_t type, int8_t mode, bool playerdrop);
@@ -48,6 +55,7 @@ namespace ms
 			PICKEDUP
 		};
 
+		int32_t amount = -1;
 		int32_t owner;
 		int8_t pickuptype;
 		bool playerdrop;

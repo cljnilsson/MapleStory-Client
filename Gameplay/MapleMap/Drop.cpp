@@ -127,8 +127,8 @@ namespace ms
 
 	Rectangle<int16_t> Drop::bounds() const
 	{
-		auto lt = get_position();
-		auto rb = lt + Point<int16_t>(32, 32);
+		auto lt = dest - Point<int16_t>(32, 24);
+		auto rb = dest + Point<int16_t>(32, 24);
 
 		return Rectangle<int16_t>(lt, rb);
 	}

@@ -97,7 +97,9 @@ namespace ms
 
 	std::unique_ptr<MapObject> DropSpawn::instantiate(const Animation &icon) const
 	{
-		return std::make_unique<MesoDrop>(oid, owner, start, dest, droptype, mode, playerdrop, icon);
+		auto drop = std::make_unique<MesoDrop>(oid, owner, start, dest, droptype, mode, playerdrop, icon);
+		drop->set_amount(id);
+		return drop;
 	}
 
 	std::unique_ptr<MapObject> DropSpawn::instantiate(const Texture &icon) const
@@ -106,7 +108,7 @@ namespace ms
 	}
 
 	CharSpawn::CharSpawn(int32_t c, const LookEntry &lk, uint8_t l, int16_t j, const std::string &nm, int8_t st,
-						 Point<int16_t> p) : cid(c), look(lk), level(l), job(j), name(nm), stance(st), position(p)
+						 Point<int16_t> p, int32_t ch) : cid(c), chair(ch), look(lk), level(l), job(j), name(nm), stance(st), position(p)
 	{}
 
 	int32_t CharSpawn::get_cid() const
@@ -116,6 +118,8 @@ namespace ms
 
 	std::unique_ptr<MapObject> CharSpawn::instantiate() const
 	{
-		return std::make_unique<OtherChar>(cid, look, level, job, name, stance, position);
+		auto character = std::make_unique<OtherChar>(cid, look, level, job, name, stance, position);
+		if (chair) character->set_chair(chair);
+		return character;
 	}
 }

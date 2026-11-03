@@ -48,7 +48,7 @@ namespace ms
 
 	void EffectLayer::add(const Animation &animation, const DrawArgument &args, int8_t z, float speed)
 	{
-		effects[z].emplace_back(animation, args, speed);
+		effects[z].emplace_back(animation, args, speed, actor);
 	}
 
 	void EffectLayer::add(const Animation &animation, const DrawArgument &args, int8_t z)

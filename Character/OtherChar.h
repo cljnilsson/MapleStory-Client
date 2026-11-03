@@ -59,6 +59,8 @@ namespace ms
 		// Return the character's level of a skill.
 		int32_t get_skilllevel(int32_t skillid) const override;
 
+		const Movement &get_observed_movement() const { return lastmove; }
+
 	private:
 		uint16_t level;
 		int16_t job;

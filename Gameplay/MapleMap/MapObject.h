@@ -60,6 +60,8 @@ namespace ms
 		// Returns the current position.
 		Point<int16_t> get_position() const;
 
+		const PhysicsObject &get_physics() const { return phobj; }
+
 	protected:
 		MapObject(int32_t oid, Point<int16_t> position = {});
 

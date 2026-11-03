@@ -16,6 +16,7 @@
 //	along with this program.  If not, see <https://www.gnu.org/licenses/>.		//
 //////////////////////////////////////////////////////////////////////////////////
 #include "UIQuit.h"
+#include "../../HeadlessState.h"
 
 #include "Timer.h"
 #include "../UI.h"
@@ -171,6 +172,13 @@ namespace ms
 		return TYPE;
 	}
 
+	bool UIQuit::respond(bool confirm)
+	{
+		if (!is_active()) return false;
+		button_pressed(confirm ? Buttons::YES : Buttons::NO);
+		return true;
+	}
+
 	Button::State UIQuit::button_pressed(uint16_t buttonid)
 	{
 		switch (buttonid)
@@ -180,6 +188,8 @@ namespace ms
 				break;
 			case Buttons::YES:
 			{
+				deactivate();
+				HeadlessState::set_screen("logout_pending");
 				Constants::Constants::get().set_viewwidth(800);
 				Constants::Constants::get().set_viewheight(600);
 

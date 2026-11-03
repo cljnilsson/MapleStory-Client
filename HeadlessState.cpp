@@ -1,21 +1,32 @@
 #include "HeadlessState.h"
+#include "Data/SkillData.h"
+#include "Net/Packets/AttackAndSkillPackets.h"
+#include "Net/Packets/PlayerPackets.h"
 #include "Configuration.h"
+#include "Data/ItemData.h"
 #include "IO/UITypes/UIChannel.h"
+#include "IO/UITypes/UIChatBar.h"
+#include "IO/UITypes/UIQuit.h"
 #include "IO/UITypes/UICashShop.h"
 
 #include "Gameplay/Stage.h"
 #include "Gameplay/MapleMap/Npc.h"
 #include "Gameplay/MapleMap/Mob.h"
+#include "Gameplay/MapleMap/ItemDrop.h"
+#include "Gameplay/MapleMap/Reactor.h"
 #include "IO/UI.h"
 #include "IO/KeyAction.h"
 #include "IO/UITypes/UIEquipInventory.h"
 #include "IO/UITypes/UIItemInventory.h"
 #include "IO/UITypes/UINpcTalk.h"
 #include "IO/UITypes/UIStatsInfo.h"
+#include "IO/UITypes/UINotice.h"
 #include "IO/UITypes/UICharSelect.h"
 #include "IO/UITypes/UIWorldSelect.h"
 #include "IO/UITypes/UISoftKey.h"
 #include "IO/UITypes/UILoginNotice.h"
+#include "Net/Handlers/LoginHandlers.h"
+#include "Net/Handlers/CashShopHandlers.h"
 #include "Net/Packets/InventoryPackets.h"
 #include "Net/Packets/GameplayPackets.h"
 #include "Net/Packets/NpcInteractionPackets.h"
@@ -31,6 +42,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <tuple>
 
 namespace ms
 {
@@ -44,6 +56,12 @@ namespace ms
 			uint64_t snapshot_seq = 0;
 			uint64_t field_entry_seq = 0;
 			uint64_t progress = 0;
+			bool trace = false, export_paused = false;
+			std::map<int, int64_t> buff_expiry;
+			std::map<int32_t, std::string> mob_statuses;
+			std::map<int32_t, std::tuple<int, int, bool>> motion_states;
+			uint64_t render_frame = 0, observation_id = 0, observations = 0, dropped = 0;
+			uint64_t export_us = 0, export_max_us = 0, export_count = 0;
 			const auto process_start = std::chrono::steady_clock::now();
 			const std::string session_id = [] {
 				if (const char *id = std::getenv("MS_HEADLESS_SESSION_ID"); id && *id) return std::string(id);
@@ -80,18 +98,47 @@ namespace ms
 
 			void look(std::ostringstream &o, const CharLook &l);
 
+			void motion(std::ostringstream &o, const MapObject &obj)
+			{
+				const auto &p = obj.get_physics();
+				const auto *remote = dynamic_cast<const OtherChar *>(&obj);
+				o << ",\"foothold\":" << p.fhid << ",\"grounded\":" << (remote ? "null" : (p.onground ? "true" : "false"))
+				  << ",\"physics_grounded\":" << (p.onground ? "true" : "false")
+				  << ",\"vx\":" << p.hspeed << ",\"vy\":" << p.vspeed;
+				if (remote)
+				{
+					const auto &m = remote->get_observed_movement();
+					o << ",\"movement\":{\"stance_byte\":" << int(m.newstate) << ",\"foothold\":" << m.fh
+					  << ",\"x\":" << m.xpos << ",\"y\":" << m.ypos << ",\"duration_ms\":" << m.duration << '}';
+				}
+				if (const auto *c = dynamic_cast<const Char *>(&obj))
+				{
+					o << ",\"action\":" << int(c->get_look().get_stance()) << ",\"stance\":" << int(c->get_observed_state())
+					  << ",\"charge_skill\":" << c->get_charge() << ",\"charge_asset\":" << (c->has_charge_asset() ? "true" : "false")
+					  << ",\"attacking\":" << (c->is_attacking() ? "true" : "false")
+					  << ",\"climbing\":" << (c->is_climbing() ? "true" : "false") << ",\"chair\":" << c->get_chair() << ",\"chair_asset\":" << (c->has_chair_asset() ? "true" : "false");
+					o << ",\"foreign_buffs\":[";
+					bool comma = false;
+					for (const auto &b : c->foreign_buffs) { if (comma) o << ','; comma = true; o << "{\"mask_bit\":" << b.first << ",\"value\":" << b.second << '}'; }
+					o << ']';
+				}
+			}
+
 			void objects(std::ostringstream &o, MapObjects *objs, const char *kind)
 			{
 				o << "\"" << kind << "\":[";
-				bool first = true;
+				bool first = true, truncated = false;
+				size_t count = 0;
 				for (auto &entry : *objs)
 				{
+					if (count++ == 512) { truncated = true; break; }
 					auto &obj = entry.second;
 					if (!first)
 						o << ",";
 					first = false;
 					auto pos = obj->get_position();
 					o << "{\"oid\":" << obj->get_oid() << ",\"x\":" << pos.x() << ",\"y\":" << pos.y();
+					motion(o, *obj);
 					if (auto *c = dynamic_cast<Char *>(obj.get()))
 						{
 						o << ",\"name\":\"" << esc(c->get_name()) << "\",\"level\":" << c->get_level() << ",\"look\":";
@@ -100,10 +147,27 @@ namespace ms
 					else if (auto *n = dynamic_cast<Npc *>(obj.get()))
 						o << ",\"id\":" << n->get_npcid();
 					else if (auto *m = dynamic_cast<Mob *>(obj.get()))
-						o << ",\"id\":" << m->get_mobid();
+						{
+						o << ",\"id\":" << m->get_mobid() << ",\"hp_percent\":";
+						if (m->hp_is_known()) o << m->get_hp_percent(); else o << "null";
+						o << ",\"status\":";
+						auto status = mob_statuses.find(m->get_oid());
+						if (status == mob_statuses.end()) o << "null"; else o << status->second;
+						o << ",\"status_support\":\"spawn_records_only\",\"stance\":" << m->get_stance()
+						  << ",\"dying\":" << (m->is_dying() ? "true" : "false");
+					}
+					else if (auto *drop = dynamic_cast<Drop *>(obj.get()))
+					{
+						o << ",\"owner\":" << drop->get_owner() << ",\"pickup_type\":" << drop->get_pickup_type()
+						  << ",\"state\":" << drop->get_state() << ",\"quantity\":null";
+						if (auto *item = dynamic_cast<ItemDrop *>(drop)) o << ",\"item_id\":" << item->get_itemid();
+						else o << ",\"item_id\":null,\"mesos\":" << drop->get_amount();
+					}
+					else if (auto *reactor = dynamic_cast<Reactor *>(obj.get()))
+						o << ",\"id\":" << reactor->get_id() << ",\"state\":" << reactor->get_state();
 					o << "}";
 				}
-				o << "]";
+				o << "],\"" << kind << "_truncated\":" << (truncated ? "true" : "false");
 			}
 		}
 
@@ -127,8 +191,28 @@ namespace ms
 					}
 				for (int32_t oid : prev)
 					if (!now.count(oid))
+					{
+						if (std::string(kind) == "mob") mob_statuses.erase(oid);
+						if (std::string(kind) == "char") motion_states.erase(oid);
 						event("despawn", std::string(",\"kind\":\"") + kind + "\",\"oid\":" + std::to_string(oid));
+					}
 				prev = now;
+			}
+
+			void track_motion(const Char &c)
+			{
+				if (!trace || observations >= 4096 || (motion_states.size() >= 512 && !motion_states.count(c.get_oid()))) return;
+				const auto &p = c.get_physics();
+				auto state = std::make_tuple(int(c.get_observed_state()), int(p.fhid), p.onground);
+				auto previous = motion_states.find(c.get_oid());
+				if (previous != motion_states.end() && previous->second == state) return;
+				motion_states[c.get_oid()] = state;
+				++observations;
+				std::ostringstream fields;
+				fields << ",\"boundary\":\"model\",\"actor\":" << c.get_oid()
+				  << ",\"map\":" << Stage::get().get_mapid() << ",\"x\":" << p.get_x() << ",\"y\":" << p.get_y();
+				motion(fields, c);
+				event("motion", fields.str());
 			}
 
 			void track_changes()
@@ -138,7 +222,14 @@ namespace ms
 				{
 					last_map = map;
 					known.clear();
+					motion_states.clear();
 					event("map", ",\"map\":" + std::to_string(map));
+				}
+				if (trace)
+				{
+					track_motion(Stage::get().get_player());
+					for (const auto &entry : *Stage::get().get_chars().get_chars())
+						if (auto *c = dynamic_cast<Char *>(entry.second.get())) track_motion(*c);
 				}
 				diff("char", Stage::get().get_chars().get_chars());
 				diff("npc", Stage::get().get_npcs().get_npcs());
@@ -199,7 +290,24 @@ namespace ms
 					bool first = true;
 					for (auto &s : inv.list_slots(tab.second))
 					{
-						o << (first ? "" : ",") << "{\"slot\":" << s[0] << ",\"id\":" << s[1] << ",\"count\":" << s[2] << "}";
+						o << (first ? "" : ",") << "{\"slot\":" << s[0] << ",\"id\":" << s[1] << ",\"count\":" << s[2];
+						const auto &data = ItemData::get(s[1]);
+						o << ",\"tooltip\":{\"name\":\"" << esc(data.get_name()) << "\",\"description\":\"" << esc(data.get_desc())
+						  << "\",\"valid\":" << (data.is_valid() ? "true" : "false") << ",\"cash\":" << (data.is_cashitem() ? "true" : "false")
+						  << ",\"untradable\":" << (data.is_untradable() ? "true" : "false") << "}";
+						if (auto item = inv.get_item(tab.second, s[0]))
+							o << ",\"flags\":" << item->get_flags() << ",\"expiry_raw\":" << item->get_expiration() << ",\"owner\":\"" << esc(item->get_owner()) << "\"";
+						else if (auto eq = inv.get_equip(tab.second, s[0]))
+						{
+							o << ",\"flags\":" << eq->get_flags() << ",\"expiry_raw\":" << eq->get_expiration() << ",\"owner\":\"" << esc(eq->get_owner())
+							  << "\",\"upgrade_slots\":" << int(eq->get_slots()) << ",\"upgrade_level\":" << int(eq->get_level()) << ",\"hammer\":" << eq->get_vicious() << ",\"stats\":{";
+							bool comma = false;
+							for (auto stat : EquipStat::values)
+							{ o << (comma ? "," : "") << "\"" << EquipStat::names[stat] << "\":" << eq->get_stat(stat); comma = true; }
+							o << "}";
+						}
+						else o << ",\"flags\":null,\"expiry_raw\":null,\"owner\":null"; // pet metadata is separate
+						o << "}";
 						first = false;
 					}
 					o << "]";
@@ -309,6 +417,28 @@ namespace ms
 					return act_result(id, name, false, "request canceled by caller");
 				}
 
+				if (name == "observe")
+				{
+					if (arg == "stats")
+					{
+						event("observation_metrics", ",\"progress\":" + std::to_string(progress)
+							+ ",\"render_frame\":" + std::to_string(render_frame)
+							+ ",\"exports\":" + std::to_string(export_count) + ",\"export_us\":" + std::to_string(export_us)
+							+ ",\"export_max_us\":" + std::to_string(export_max_us));
+						return act_result(id, name, true, "");
+					}
+					if (arg == "pause" || arg == "resume")
+					{
+						export_paused = arg == "pause";
+					dirty = true;
+						return act_result(id, name, true, "");
+					}
+					if (arg != "on" && arg != "off") return act_result(id, name, false, "expected on, off, pause, resume or stats");
+					trace = arg == "on";
+					motion_states.clear();
+					observations = dropped = export_us = export_max_us = export_count = 0;
+					return act_result(id, name, true, "");
+				}
 				if (name == "login-notice")
 				{
 					if (arg != "confirm" && arg != "cancel")
@@ -336,7 +466,7 @@ namespace ms
 					return act_result(id, name, ok, ok ? "" : (name == "pic-cancel" ? "PIC keyboard has no cancel callback" : "expected 6-16 ASCII digits"));
 				}
 				// Do not change the underlying selection while a modal owns input.
-				if (name == "world-choose" || name == "channel-choose" || name == "character-choose" || name == "character-enter" || name == "character-back")
+				if (name == "view-all" || name == "world-choose" || name == "channel-choose" || name == "character-choose" || name == "character-enter" || name == "character-back" || name == "character-delete")
 				{
 					auto keyboard = UI::get().get_element<UISoftKey>();
 					bool modal = (UI::get().is_element_active(UIElement::Type::LOGINNOTICE) || UI::get().is_element_active(UIElement::Type::LOGINNOTICE_CONFIRM));
@@ -344,6 +474,14 @@ namespace ms
 						return act_result(id, name, false, "dismiss the active login dialog before selecting");
 				}
 
+				if (name == "view-all")
+				{
+					if (!arg.empty()) return act_result(id, name, false, "expected no arguments");
+					if ((screen != "world_select" && screen != "channel_select" && screen != "character_select") || !ViewAllCharHandler::request())
+						return act_result(id, name, false, "world selection is not available");
+					dirty = true;
+					return act_result(id, name, true, "");
+				}
 				if (name == "world-choose" || name == "channel-choose")
 				{
 					auto selection = UI::get().get_element<UIWorldSelect>();
@@ -366,6 +504,14 @@ namespace ms
 					dirty = true;
 					return act_result(id, name, true, "");
 				}
+				if (name == "character-delete")
+				{
+					auto selection = UI::get().get_element<UICharSelect>();
+					if (screen != "character_select" || !selection || !selection->delete_character(arg))
+						return act_result(id, name, false, "expected the exact selected character name");
+					dirty = true;
+					return act_result(id, name, true, "");
+				}
 				if (name == "character-enter")
 				{
 					if (!arg.empty()) return act_result(id, name, false, "expected no arguments");
@@ -385,6 +531,26 @@ namespace ms
 					dirty = true;
 					return act_result(id, name, true, "");
 				}
+				if (name == "cash-exit")
+				{
+					if (!arg.empty() || screen != "cash_shop" || !CashShopState::get().pending.empty())
+						return act_result(id, name, false, "Cash Shop is unavailable or a request is pending");
+					auto shop = UI::get().get_element<UICashShop>();
+					bool ok = shop && shop->request_exit();
+					return act_result(id, name, ok, ok ? "" : "Cash Shop exit unavailable");
+				}
+				if (name.compare(0, 5, "cash-") == 0 && name != "cash-enter")
+				{
+					bool ok = screen == "cash_shop" && CashShopState::request(name, arg);
+					return act_result(id, name, ok, ok ? "" : "invalid Cash Shop request, unavailable inventory or request pending");
+				}
+				if (name == "cash-enter")
+				{
+					if (!arg.empty() || screen != "in_game" || hold.active || dialog_open || Stage::get().get_player().get_stats().get_stat(MapleStat::HP) <= 0)
+						return act_result(id, name, false, "field input is unavailable");
+					EnterCashShopPacket().dispatch();
+					return act_result(id, name, true, "");
+				}
 				if (screen != "in_game")
 					return act_result(id, name, false, "action requires an in-game screen");
 
@@ -393,6 +559,28 @@ namespace ms
 					try { size_t n; out = std::stoi(arg, &n); return n == arg.size(); } catch (...) { return false; }
 				};
 				int32_t n = 0;
+
+				auto quit = UI::get().get_element<UIQuit>();
+				if (name == "logout")
+				{
+					if (arg != "open" && arg != "cancel" && arg != "confirm")
+						return act_result(id, name, false, "expected open, cancel or confirm");
+					if (arg == "open")
+					{
+						auto cashshop = UI::get().get_element<UICashShop>();
+						if (hold.active || dialog_open || (cashshop && cashshop->is_active())
+							|| UI::get().is_element_active(UIElement::Type::LOGINNOTICE)
+							|| UI::get().is_element_active(UIElement::Type::LOGINNOTICE_CONFIRM))
+							return act_result(id, name, false, "finish the active move or dialog first");
+						if (!quit || !quit->is_active()) UI::get().emplace<UIQuit>(Stage::get().get_player().get_stats());
+					}
+					else if (!quit || !quit->respond(arg == "confirm"))
+						return act_result(id, name, false, "logout dialog is not active");
+					dirty = true;
+					return act_result(id, name, true, "");
+				}
+				if (quit && quit->is_active())
+					return act_result(id, name, false, "dismiss the active logout dialog first");
 
 				if (name == "channel-change")
 				{
@@ -407,7 +595,109 @@ namespace ms
 					return act_result(id, name, true, "");
 				}
 
-				if (name == "npc-talk")
+				if (name == "reset-open" || name == "ap-reset" || name == "sp-reset" || name == "pickup" || name == "sit" || name == "stand" || name == "chair" || name == "item-move" || name == "item-drop" || name == "item-split" || name == "scripted-item" || name.rfind("skill-", 0) == 0 || name == "buff-cancel")
+				{
+					auto cash = UI::get().get_element<UICashShop>();
+					if (hold.active || dialog_open || (cash && cash->is_active())
+						|| UI::get().is_element_active(UIElement::Type::NOTICE)
+						|| UI::get().is_element_active(UIElement::Type::LOGINNOTICE)
+						|| UI::get().is_element_active(UIElement::Type::LOGINNOTICE_CONFIRM))
+						return act_result(id, name, false, "finish the active move or dialog first");
+				}
+
+				if (name == "reset-open")
+				{
+					if (!num(n) || n < 1 || n > 32767) return act_result(id, name, false, "expected cash slot");
+					int32_t item = inv.get_item_id(InventoryType::CASH, n);
+					if (item / 10000 != 505) return act_result(id, name, false, "reset item required");
+					UI::get().emplace<UICashReset>(n, item);
+					dirty = true;
+					return act_result(id, name, true, "");
+				}
+				if (name == "ap-reset" || name == "sp-reset")
+				{
+					std::istringstream args(arg);
+					int32_t slot; std::string to, from, extra;
+					if (!(args >> slot >> to >> from) || (args >> extra) || slot < 1 || slot > 32767)
+						return act_result(id, name, false, "expected cash slot, destination and source");
+					const int32_t item = inv.get_item_id(InventoryType::CASH, slot);
+					if ((name == "ap-reset" && item != 5050000) || (name == "sp-reset" && (item <= 5050000 || item / 10000 != 505)))
+						return act_result(id, name, false, "matching AP/SP Reset required");
+					auto error = UICashReset::request(slot, item, to + " " + from);
+					if (!error.empty()) return act_result(id, name, false, error);
+					dirty = true;
+					return act_result(id, name, true, "");
+				}
+
+				if (name == "skill-use" || name == "skill-down" || name == "skill-up" || name == "skill-cancel" || name == "buff-cancel" || name == "skill-learn" || name == "skill-assign")
+				{
+					auto &combat = Stage::get().get_combat();
+					auto &p = Stage::get().get_player();
+					if (name == "skill-cancel")
+					{ if (!arg.empty() || !combat.cancel_skill()) return act_result(id, name, false, "no held skill"); }
+					else if (name == "skill-assign")
+					{
+						std::istringstream input(arg); int key = 0, skill = 0; std::string extra;
+						if (!(input >> key >> skill) || input >> extra || key < 2 || key > 88 || p.get_skilllevel(skill) <= 0 || SkillData::get(skill).is_passive()) return act_result(id, name, false, "expected bindable Maple key 2-88 and learned active skill");
+						ChangeKeyMapPacket({{static_cast<KeyConfig::Key>(key), KeyType::SKILL, skill}}).dispatch();
+						UI::get().get_keyboard().assign(key, KeyType::SKILL, skill);
+					}
+					else
+					{
+						if (!num(n) || n <= 0) return act_result(id, name, false, "expected positive skill id");
+						if (name == "skill-learn")
+						{
+							const auto &data = SkillData::get(n);
+							if (p.get_stats().get_stat(MapleStat::SP) <= 0 || !p.get_stats().get_job().can_use(n) || p.get_skilllevel(n) >= data.get_masterlevel()) return act_result(id, name, false, "no SP or skill unavailable/maxed");
+							for (const auto &req : data.get_reqskills()) if (p.get_skilllevel(req.first) < req.second) return act_result(id, name, false, "skill prerequisite missing");
+							SpendSpPacket(n).dispatch();
+						}
+						else if (name == "buff-cancel")
+						{
+							bool active = false;
+							for (const auto &b : p.get_buffs().values()) if (b.skillid == n) active = true;
+							if (!active) return act_result(id, name, false, "buff is not active");
+							CancelSkillPacket(n).dispatch();
+						}
+						else if (name == "skill-use")
+						{ if (combat.held_skill() || !combat.use_move(n)) return act_result(id, name, false, "skill unavailable, unlearned or insufficient resources"); }
+						else if (!combat.skill_key(n, name == "skill-down")) return act_result(id, name, false, "skill key rejected");
+					}
+				}
+				else if (name == "pickup")
+				{
+					if (!arg.empty() || !Stage::get().request_pickup()) return act_result(id, name, false, "no settled drop within pickup range");
+				}
+				else if (name == "sit")
+				{
+					if (!arg.empty() || Stage::get().get_player().is_sitting()) return act_result(id, name, false, "expected standing player and no arguments");
+					Stage::get().send_key(KeyType::ACTION, KeyAction::SIT, true);
+					Stage::get().send_key(KeyType::ACTION, KeyAction::SIT, false);
+					if (!Stage::get().get_player().is_sitting()) return act_result(id, name, false, "no map seat in reach");
+				}
+				else if (name == "stand")
+				{
+					auto &player = Stage::get().get_player();
+					if (!arg.empty() || !player.is_sitting()) return act_result(id, name, false, "player is not sitting");
+					if (player.get_chair()) player.stand_up();
+					else { Stage::get().send_key(KeyType::ACTION, KeyAction::UP, true); Stage::get().send_key(KeyType::ACTION, KeyAction::UP, false); }
+				}
+				else if (name == "item-move" || name == "item-drop" || name == "item-split")
+				{
+					std::istringstream args(arg); std::string tab, extra; int source = 0, dest = 0, qty = 0;
+					args >> tab >> source;
+					if (name == "item-drop") args >> qty; else args >> dest >> qty;
+					InventoryType::Id type = tab == "equip" ? InventoryType::EQUIP : tab == "use" ? InventoryType::USE : tab == "setup" ? InventoryType::SETUP : tab == "etc" ? InventoryType::ETC : tab == "cash" ? InventoryType::CASH : InventoryType::NONE;
+					if (name == "item-split") return act_result(id, name, false, "partial-stack moves are unsupported by the v83 server; move a whole stack or drop a quantity");
+					if (!args || (args >> extra) || source < 1 || source > 32767 || dest < 0 || dest > 32767 || qty < 1 || qty > 32767 || (name == "item-move" && dest == 0)
+						|| !inv.request_move(type, source, dest, qty)) return act_result(id, name, false, "invalid inventory move or protected drop");
+				}
+				else if (name == "chair" || name == "scripted-item")
+				{
+					if (dialog_open || !num(n) || n < 1 || n > 32767 || !Stage::get().get_player().use_inventory_item(name == "chair" ? InventoryType::SETUP : InventoryType::USE, n, name == "scripted-item"))
+						return act_result(id, name, false, "invalid item slot or player state");
+				}
+				else if (name == "npc-talk")
 				{
 					if (!num(n)) return act_result(id, name, false, "expected npc oid");
 					if (!Stage::get().get_npcs().get_npcs()->contains(n)) return act_result(id, name, false, "no such npc oid");
@@ -435,7 +725,7 @@ namespace ms
 					if (!num(n)) return act_result(id, name, false, "expected use slot");
 					int32_t itemid = inv.get_item_id(InventoryType::Id::USE, n);
 					if (!itemid) return act_result(id, name, false, "empty use slot");
-					UseItemPacket(n, itemid).dispatch();
+					if (n < 1 || n > 32767 || !Stage::get().get_player().use_inventory_item(InventoryType::USE, n, false)) return act_result(id, name, false, "item requires another use path or player is busy");
 				}
 				else if (name == "equip")
 				{
@@ -660,11 +950,69 @@ namespace ms
 
 		void set_screen(const char *name)
 		{
-			if (std::string(name) == "in_game") ++field_entry_seq;
+			// A login screen starts a fresh account session. Keep the process-wide
+			// event/field sequence, but never carry observations into a later login.
+			if (screen != name && std::string(name) == "login")
+			{
+				ViewAllCharHandler::reset();
+				buff_expiry.clear();
+				mob_statuses.clear();
+				cancel_hold("returned to login");
+				clear_dialog();
+				dialog_npc = 0;
+				dialog_type = -1;
+				dialog_text.clear();
+				party_id = 0;
+				party_leader = 0;
+				party_members.clear();
+				invite_party = 0;
+				invite_from.clear();
+				last_map = -1;
+				known.clear();
+				CashShopState::get() = CashShopState{};
+				event("observations_reset", ",\"reason\":\"login\"");
+			}
+			if (std::string(name) == "in_game") { ++field_entry_seq; mob_statuses.clear(); buff_expiry.clear(); }
 			if (screen != name)
 				event("screen", std::string(",\"screen\":\"") + name + "\"");
 			screen = name;
 			dirty = true;
+		}
+
+		void mob_status(int32_t oid, const std::string &json)
+		{
+			if (!dir()) return;
+			// Bound retained packet metadata independently of map population.
+			if (mob_statuses.size() >= 2048 && !mob_statuses.count(oid)) return;
+			mob_statuses[oid] = json;
+		}
+
+		void buff_changed(int stat, int source, int duration, int value)
+		{
+			if (!dir()) return;
+			const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - process_start).count();
+			if (source) buff_expiry[stat] = now + duration;
+			else buff_expiry.erase(stat);
+			if (observing()) event("buff", ",\"boundary\":\"model\",\"stat\":" + std::to_string(stat)
+				+ ",\"source\":" + std::to_string(source) + ",\"duration_ms\":" + std::to_string(duration)
+				+ ",\"value\":" + std::to_string(value));
+		}
+
+		bool observing() { return dir() && trace; }
+
+		void begin_frame() { if (dir()) ++render_frame; }
+
+		uint64_t presentation(const char *boundary, const char *kind, int64_t value, int32_t actor, uint64_t id)
+		{
+			if (!observing()) return 0;
+			if (observations >= 4096) { ++dropped; return 0; }
+			if (!id) id = ++observation_id;
+			++observations;
+			event("presentation", std::string(",\"boundary\":\"") + boundary + "\",\"kind\":\"" + kind
+				+ "\",\"observation_id\":" + std::to_string(id) + ",\"value\":" + std::to_string(value)
+				+ ",\"actor\":" + std::to_string(actor) + ",\"render_frame\":" + std::to_string(render_frame)
+				+ ",\"map\":" + std::to_string(Stage::get().get_mapid()));
+			return id;
 		}
 
 		void update()
@@ -690,11 +1038,12 @@ namespace ms
 			poll_act(d);
 
 			auto now = std::chrono::steady_clock::now();
-			if (!dirty && now - last < std::chrono::milliseconds(250))
+			if (!dirty && (export_paused || now - last < std::chrono::milliseconds(250)))
 				return;
 			last = now;
 			dirty = false;
 
+			const auto export_start = std::chrono::steady_clock::now();
 			std::ostringstream o;
 			const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
 					now - process_start).count();
@@ -704,13 +1053,40 @@ namespace ms
 			  << "\",\"assets\":\"" << esc(asset_id && *asset_id ? asset_id : "runtime-nx") << "\""
 			  << ",\"session_id\":\"" << esc(session_id) << "\",\"seq\":" << ++snapshot_seq
 			  << ",\"progress\":" << progress << ",\"uptime_ms\":" << elapsed_ms
-			  << ",\"capabilities\":[\"login-notice\",\"pic-submit\",\"pic-cancel\",\"world-choose\",\"channel-choose\",\"channel-change\",\"character-choose\",\"character-enter\",\"character-back\",\"npc-talk\",\"npc-choose\",\"use-item\",\"equip\",\"unequip\",\"window\",\"move\",\"jump\",\"portal\",\"attack\",\"party-create\",\"party-leave\",\"party-invite\",\"party-accept\"]"
-			  << ",\"screen\":\"" << screen << "\"";
+			  << ",\"capabilities\":[\"reset-open\",\"ap-reset\",\"sp-reset\",\"cash-enter\",\"cash-exit\",\"cash-buy\",\"cash-gift\",\"cash-retrieve\",\"cash-coupon\",\"cash-name-rules\",\"cash-world-rules\",\"observe\",\"view-all\",\"login-notice\",\"pic-submit\",\"pic-cancel\",\"world-choose\",\"channel-choose\",\"channel-change\",\"logout\",\"character-choose\",\"character-enter\",\"character-back\",\"character-delete\",\"npc-talk\",\"npc-choose\",\"pickup\",\"sit\",\"stand\",\"chair\",\"item-move\",\"item-drop\",\"item-split\",\"scripted-item\",\"use-item\",\"equip\",\"unequip\",\"window\",\"move\",\"jump\",\"portal\",\"attack\",\"skill-use\",\"skill-down\",\"skill-up\",\"skill-cancel\",\"skill-learn\",\"skill-assign\",\"buff-cancel\",\"party-create\",\"party-leave\",\"party-invite\",\"party-accept\"]"
+			  << ",\"observation\":{\"export_paused\":" << (export_paused ? "true" : "false") << ",\"enabled\":" << (trace ? "true" : "false") << ",\"count\":" << observations
+			  << ",\"dropped\":" << dropped << ",\"limit\":4096,\"render_frame\":" << render_frame
+			  << ",\"exports\":" << export_count << ",\"export_us\":" << export_us << ",\"export_max_us\":" << export_max_us << "}"
+			  << ",\"screen\":\"" << screen << "\""
+			  << ",\"logout_dialog\":" << (UI::get().is_element_active(UIElement::Type::QUIT) ? "true" : "false");
+			{
+				const auto& cash = CashShopState::get();
+				o << ",\"cash_shop\":{\"opened\":" << (cash.opened ? "true" : "false")
+				  << ",\"balances_known\":" << (cash.balances_known ? "true" : "false")
+				  << ",\"inventory_known\":" << (cash.inventory_known ? "true" : "false")
+				  << ",\"credit\":" << cash.credit << ",\"points\":" << cash.points << ",\"prepaid\":" << cash.prepaid
+				  << ",\"revision\":" << cash.revision << ",\"pending\":\"" << esc(cash.pending) << "\",\"result\":\"" << esc(cash.result)
+				  << "\",\"message\":" << cash.message << ",\"rules\":\"" << esc(cash.rules) << "\",\"rules_error\":" << cash.rules_error;
+				auto cash_items = [&](const char* key, const std::vector<CashShopState::Item>& items) {
+					o << ",\"" << key << "\":["; bool comma = false;
+					for (const auto& item : items) {
+						o << (comma ? "," : "") << "{\"cash_id\":\"" << item.id << "\",\"item\":" << item.item
+						  << ",\"serial\":" << item.serial << ",\"quantity\":" << item.quantity
+						  << ",\"expiration_raw\":\"" << item.expiration << "\",\"from\":\"" << esc(item.from) << "\"}"; comma = true;
+					} o << ']';
+				};
+				cash_items("inventory", cash.inventory); cash_items("gifts", cash.gifts);
+				o << '}';
+			}
 			if (screen == "in_game")
 				o << ",\"navigation\":{\"world_id\":" << int(Configuration::get().get_worldid())
 				  << ",\"configured_channel\":" << int(Configuration::get().get_channelid()) + 1
 				  << ",\"pending_channel\":" << UIChannel::get_pending_channel()
 				  << ",\"field_entry_seq\":" << field_entry_seq << '}';
+			if (auto reset = UI::get().get_element_checked<UICashReset>(); reset && reset->is_active())
+				o << ",\"reset_dialog\":{\"slot\":" << reset->get_slot() << ",\"item\":" << reset->get_item()
+				  << ",\"values\":\"" << esc(reset->get_values()) << "\",\"error\":\"" << esc(reset->get_error()) << "\"}";
+			else o << ",\"reset_dialog\":null";
 			// Dialog presence and notice IDs only: never serialize PIC entry text.
 			auto keyboard = UI::get().get_element<UISoftKey>();
 			auto notice = UI::get().get_element_checked<UILoginNotice>();
@@ -745,6 +1121,7 @@ namespace ms
 				if (auto selection = UI::get().get_element<UICharSelect>(); selection && selection->is_active())
 				{
 					o << ",\"login\":{\"pic_mode\":" << selection->get_pic_mode()
+					  << ",\"view_all\":" << (selection->is_view_all() ? "true" : "false")
 					  << ",\"selected_index\":" << selection->get_selected_character();
 					const auto &characters = selection->get_characters();
 					const auto selected = selection->get_selected_character();
@@ -756,7 +1133,7 @@ namespace ms
 					{
 						if (comma) o << ',';
 						comma = true;
-						o << "{\"id\":" << character.id << ",\"name\":\"" << esc(character.stats.name) << "\"}";
+						o << "{\"id\":" << character.id << ",\"name\":\"" << esc(character.stats.name) << "\",\"world_id\":" << (selection->is_view_all() ? selection->character_world(character.id) : Configuration::get().get_worldid()) << "}";
 					}
 					o << "]}";
 				}
@@ -772,9 +1149,45 @@ namespace ms
 				  << "\",\"x\":" << pos.x() << ",\"y\":" << pos.y()
 				  << ",\"hp\":" << s.get_stat(MapleStat::Id::HP) << ",\"maxhp\":" << s.get_stat(MapleStat::Id::MAXHP)
 				  << ",\"mp\":" << s.get_stat(MapleStat::Id::MP) << ",\"maxmp\":" << s.get_stat(MapleStat::Id::MAXMP)
-				  << ",\"exp\":" << s.get_exp() << "}";
+				  << ",\"str\":" << s.get_stat(MapleStat::STR) << ",\"dex\":" << s.get_stat(MapleStat::DEX)
+				  << ",\"int\":" << s.get_stat(MapleStat::INT) << ",\"luk\":" << s.get_stat(MapleStat::LUK)
+				  << ",\"exp\":" << s.get_exp() << ",\"ap\":" << s.get_stat(MapleStat::AP) << ",\"sp\":" << s.get_stat(MapleStat::SP);
+				motion(o, p);
+				o << "}";
+				o << ",\"skills\":[";
+				bool skill_comma = false;
+				size_t skill_count = 0;
+				for (const auto &entry : p.get_skills().entries())
+				{
+					if (skill_count++ == 512) break;
+					if (skill_comma) o << ','; skill_comma = true;
+					o << "{\"id\":" << entry.first << ",\"level\":" << entry.second.level << ",\"master_level\":" << entry.second.masterlevel << ",\"expiry_raw\":" << entry.second.expiration << '}';
+				}
+				o << "],\"skills_truncated\":" << (p.get_skills().entries().size() > 512 ? "true" : "false") << ",\"charge\":{\"skill\":" << Stage::get().get_combat().held_skill() << ",\"elapsed_ms\":" << Stage::get().get_combat().charge_ms() << ",\"asset\":" << (p.has_charge_asset() ? "true" : "false") << "},\"summons\":[";
+				bool summon_comma = false;
+				for (const auto &entry : Stage::get().get_combat().get_summons())
+				{
+					if (summon_comma) o << ','; summon_comma = true;
+					const auto &s = entry.second;
+					o << "{\"oid\":" << s.oid << ",\"owner\":" << s.owner << ",\"skill\":" << s.skill << ",\"level\":" << s.level << ",\"x\":" << s.position.x() << ",\"y\":" << s.position.y() << ",\"movement\":" << s.movement << ",\"follow_supported\":false,\"attacking\":" << (s.attacking ? "true" : "false") << ",\"asset\":" << (s.asset ? "true" : "false") << '}';
+				}
+				o << ']';
 				o << ",\"look\":";
 				look(o, p.get_look());
+				o << ",\"buffs\":[";
+				bool buff_comma = false;
+				for (const auto &b : p.get_buffs().values())
+				{
+					if (!b.skillid) continue;
+					if (buff_comma) o << ',';
+					buff_comma = true;
+					o << "{\"stat\":" << int(b.stat) << ",\"source\":" << b.skillid << ",\"value\":" << b.value
+					  << ",\"duration_ms\":" << b.duration << ",\"expires_uptime_ms\":";
+					auto expiry = buff_expiry.find(int(b.stat));
+					if (expiry == buff_expiry.end()) o << "null"; else o << expiry->second;
+					o << '}';
+				}
+				o << ']';
 				o << ",\"inventory\":";
 				inventory(o, p.get_inventory());
 				o << ",\"party\":";
@@ -789,10 +1202,12 @@ namespace ms
 					dialog(o);
 				else
 					o << "null";
+				auto chat = UI::get().get_element<UIChatBar>();
 				auto stats = UI::get().get_element<UIStatsInfo>();
 				auto item_inventory = UI::get().get_element<UIItemInventory>();
 				auto equip_inventory = UI::get().get_element<UIEquipInventory>();
-				o << ",\"ui\":{\"stats_open\":"
+				o << ",\"ui\":{\"chat_input_open\":" << (chat && chat->is_chatfieldopen() ? "true" : "false")
+				  << ",\"stats_open\":"
 				  << (stats && stats->is_active() ? "true" : "false")
 				  << ",\"item_inventory_open\":"
 				  << (item_inventory && item_inventory->is_active() ? "true" : "false")
@@ -806,6 +1221,8 @@ namespace ms
 				objects(o, Stage::get().get_mobs().get_mobs(), "mobs");
 				o << ",";
 				objects(o, Stage::get().get_drops().get_drops(), "drops");
+				o << ",";
+				objects(o, Stage::get().get_reactors().get_reactors(), "reactors");
 			}
 			else
 				o << ",\"map\":null";
@@ -818,6 +1235,10 @@ namespace ms
 				f << o.str();
 			}
 			std::rename(tmp.c_str(), path.c_str());
+			const auto cost = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - export_start).count();
+			export_us += cost;
+			export_max_us = std::max(export_max_us, static_cast<uint64_t>(cost));
+			++export_count;
 		}
 	}
 }

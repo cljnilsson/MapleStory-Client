@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <cstdint>
 
 #include "Net/InPacket.h"
 
@@ -29,6 +30,14 @@ namespace ms
 
 		// Parse a PARTY_OPERATION packet into the party snapshot / events.
 		void on_party(InPacket &recv);
+
+		// Bounded, opt-in diagnostic observations. IDs correlate model objects with
+		// their first draw invocation; drawing is not a pixel/visibility assertion.
+		bool observing();
+		uint64_t presentation(const char *boundary, const char *kind, int64_t value = 0, int32_t actor = 0, uint64_t id = 0);
+		void begin_frame();
+		void mob_status(int32_t oid, const std::string &json);
+		void buff_changed(int stat, int source, int duration, int value);
 
 		// Call once per main-loop update; throttled and a no-op when disabled.
 		void update();

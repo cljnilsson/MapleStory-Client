@@ -28,7 +28,8 @@ namespace ms
 		World parse_world(InPacket& recv);
 		uint8_t channel_count(uint8_t world);
 		RecommendedWorld parse_recommended_world(InPacket& recv);
-		CharEntry parse_charentry(InPacket& recv);
+		CharEntry parse_charentry(InPacket& recv, bool view_all = false);
+		int8_t account_pic_mode();
 		StatsEntry parse_stats(InPacket& recv);
 		LookEntry parse_look(InPacket& recv);
 		void parse_login(InPacket& recv);

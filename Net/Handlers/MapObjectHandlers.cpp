@@ -26,6 +26,18 @@
 
 namespace ms
 {
+	void ShowChairHandler::handle(InPacket &recv) const
+	{
+		int32_t cid = recv.read_int(), chair = recv.read_int();
+		if (auto character = Stage::get().get_character(cid)) character->set_chair(chair);
+	}
+	void CancelChairHandler::handle(InPacket &recv) const
+	{
+		bool seated = recv.read_bool();
+		if (seated) recv.read_short(); // fixed-map seats are handled by the existing seat path
+		else Stage::get().get_player().set_chair(0);
+	}
+
 	void SpawnCharHandler::handle(InPacket& recv) const
 	{
 		int32_t cid = recv.read_int();
@@ -65,7 +77,7 @@ namespace ms
 
 		recv.read_int(); // count of 5110000 
 		recv.read_int(); // 'itemeffect'
-		recv.read_int(); // 'chair'
+		int32_t chair = recv.read_int();
 
 		Point<int16_t> position = recv.read_point();
 		int8_t stance = recv.read_byte();
@@ -108,7 +120,7 @@ namespace ms
 		recv.read_byte(); // team
 
 		Stage::get().get_chars().spawn(
-			{ cid, look, level, job, name, stance, position }
+			{ cid, look, level, job, name, stance, position, chair }
 		);
 	}
 
@@ -205,7 +217,7 @@ namespace ms
 		recv.read_byte(); // 5 if controller == null
 		int32_t id = recv.read_int();
 
-		MonsterStatusParser::skip_temporary(recv);
+		MonsterStatusParser::skip_temporary(recv, oid);
 
 		Point<int16_t> position = recv.read_point();
 		int8_t stance = recv.read_byte();
@@ -258,7 +270,7 @@ namespace ms
 
 				int32_t id = recv.read_int();
 
-				MonsterStatusParser::skip_temporary(recv);
+				MonsterStatusParser::skip_temporary(recv, oid);
 
 				Point<int16_t> position = recv.read_point();
 				int8_t stance = recv.read_byte();

@@ -109,6 +109,8 @@ namespace ms
 		// Notify the server that the player has moved maps
 		void transfer_player();
 
+		bool request_pickup();
+
 	private:
 		void load_map(int32_t mapid);
 

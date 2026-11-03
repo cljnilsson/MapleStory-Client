@@ -203,7 +203,7 @@ Please remember this is ONLY for the HeavenClient development and will only be u
 
 Another important note to remember is that HeavenClient is a free open-sourced client developed for personal use. Do NOT pay for any services requested by anyone in regards to this client. It will always remain open and free of charge. There is no intent to publish this code with any payment in mind. If that ever changes, donations and disclaimers for donations will be removed.
 
-M161 world/channel selection (build and offline verification only):
+M161 world/channel selection:
 ```sh
 python ms_headless.py state --field login
 python ms_headless.py act world-choose 0 --wait-state login.world_id==0
@@ -214,7 +214,7 @@ World IDs come from `login.worlds`; channel numbers are 1-based. World selection
 opens the channel screen. Channel selection alone does not enter it; `play`
 confirms the selection and presses Enter. Only worlds supported by the existing
 UI (IDs 0–4 with available button art) can be selected. Snapshots expose all
-advertised world names, IDs and channel counts. Live verification remains open.
+advertised world names, IDs and channel counts. Isolated live checks covered world 0 and channels 1/2.
 
 `play --world --channel` also applies both choices when resuming on the channel
 screen; a rejected selection stops before Enter.
@@ -226,7 +226,7 @@ For example, `wait --state login_dialog.pic_keyboard==true` waits for the PIC
 keyboard, and `wait --state login_dialog.notice==true` waits for a login notice.
 PIC contents are never included. World/channel/character selection actions reject
 while either modal is active; dismiss the dialog through its existing UI first.
-These observations are build-verified only; live PIC acceptance remains open.
+Wrong-PIC recovery and first registration passed isolated muted live checks on 2026-11-03.
 
 `python ms_headless.py pic` prompts for the PIC without echo; `pic --stdin`
 reads it from stdin for automation. This command requires an already open PIC
@@ -239,8 +239,8 @@ The PIC is never a CLI argument or included in snapshot/action events. The
 request uses an owner-only temporary mailbox file in the private session directory;
 the client removes it before dispatch, and the CLI cleans up on timeout.
 `pic --wait-state screen==in_game` can observe entry after submission; dispatch
-success alone does not confirm server acceptance. Wrong-PIC and first-registration
-flows still require live verification. No PIC live test has been run for this slice.
+success alone does not confirm server acceptance. Wrong-PIC recovery and first
+registration were observed with the fan client and an isolated demo database.
 
 `act login-notice confirm` acknowledges the active login notice through its UI
 callback (including the PIC registration prompt). `act login-notice cancel`
@@ -250,7 +250,7 @@ Snapshots expose `login_dialog.can_cancel`. Use
 or `--wait-state login_dialog.notice==false` when dismissing an error.
 These actions require an active login notice outside the field and reject other
 dialog classes sharing its UI slot. Dispatch success does not prove server
-acceptance; registration and wrong-PIC flows remain unverified live.
+acceptance; observe the resulting notice or field entry.
 
 `play` uses the guarded `character-enter` action for no-PIC entry and waits for
 the in-game screen event. Rejected entry stops immediately without sending Return.
@@ -283,8 +283,7 @@ only to an ordinary login notice. This prevents actions behind other dialogs.
 The in-game Change Channel window now sends the v83 channel request and logs the
 character into the redirected channel. It uses the last advertised channel count
 (up to the window's 20-channel layout) and prevents selecting the current channel.
-This path still needs live transfer verification; a dedicated headless channel
-change action and outcome observation are not yet available.
+A muted isolated live check transferred from channel 1 to 2 with a new field-entry sequence.
 
 M161 channel-change automation: `act channel-change 2` (also accepted in a batch)
 requests a 1-based advertised channel through the same controller as the channel
@@ -295,6 +294,243 @@ In-game `navigation` exposes `world_id`, `configured_channel`, `pending_channel`
 completed field transition. Configured channel changes on the redirect response;
 only a later field-entry sequence can establish that a field loaded. An ignored
 request can leave the pending target visible; a retry replaces it.
-Known blocker: full character-data field entry currently requires UICharSelect,
-which is absent during an in-game transfer. Transfer reinitialization must be
-fixed before claiming live channel-change support.
+Full character-data field entry can reuse the current character when the character
+selector is absent, requiring a matching character ID. Both entry paths replace
+stats, inventories, skills, quests, travel/book data and cooldowns from the packet.
+The server field header supplies the actual channel, including random View All selection.
+
+`act character-delete <exact-selected-name>` invokes the selected character's
+Delete button and rejects a missing or mismatched name, unavailable selection,
+or active login/PIC modal. This is destructive: mode 2 sends the deletion request
+immediately; mode 1 retains the existing confirmation and protected `pic` flow;
+mode 0 displays the existing no-PIC refusal. Dispatch is not proof of deletion.
+The `character_delete_result` event reports server `character_id`, raw `status`
+and `ok` (status 0); successful responses also remove the character from the
+character-list snapshot. Isolated live checks removed a disposable non-leader and
+refused a synthetic guild leader (status 22).
+
+`act logout open --wait-state logout_dialog==true` opens the existing Quit
+controller; `act logout cancel --wait-state logout_dialog==false` dismisses it.
+`act logout confirm --wait-state screen==login` uses the existing fade/field-clear/
+login-reconnect flow. Confirmation requires an active Quit dialog. Opening rejects
+active movement, NPC/login dialogs and Cash Shop; other semantic field actions
+reject while the Quit dialog owns input. Confirmation marks `logout_pending`
+until the login UI is created. Observing `login` confirms the screen transition,
+not successful server authentication or relog. Isolated live checks separately
+confirmed a fresh authentication after logout.
+
+Returning to the login screen clears headless NPC-dialog, party/invite and
+map/object observations and emits `observations_reset` with reason `login`.
+A later entry into the same map reports its objects afresh. Process event and
+field-entry sequences remain monotonic. This reset does not prove reconnect or
+authentication success and does not clear server-side party membership.
+
+
+`act view-all --wait-state login.view_all==true` requests every account character
+from world/channel selection or ordinary character selection. The latter also
+has a “View all characters” click target at (521,300), size 180×24. The aggregate
+list exposes IDs, names and `world_id`; choose with `character-choose`, then
+`character-enter`. PIC entry/registration uses the same protected keyboard flow.
+The server chooses the channel; observe `navigation.configured_channel` after
+field entry. Create/delete are disabled in this list; use `character-back` and
+ordinary selection for those operations. Server padding duplicates are removed;
+more than 127 raw entries is an explicit unsupported-count error. The original
+world-panel “View All” button continues to control recommended worlds.
+
+M161's live exit checks passed with muted clients and a temporary demo database,
+including View All entry with PIC enabled and disabled. These are fan-client
+observations (`X?`), not original compatible-client acceptance.
+
+## Field and presentation diagnostics (M162)
+
+Use `act observe on` before a short test, then `act observe off`. Tracing is
+opt-in and stops recording presentation/motion observations after 4,096 records
+per enable window (`observation.count`, `dropped`, `limit`). Existing event logs
+rotate at 1 MiB. `observation.render_frame` identifies a field draw invocation;
+it does not establish that a sprite was visible or that its pixels were correct.
+
+`presentation` events distinguish `packet`, `model`, `render` and `end`
+boundaries. Remote attacks report their actor and skill at packet receipt and
+model application. Character actions report model changes and first draw after
+a change. Effects and damage numbers carry an `observation_id` from construction
+to first draw (and effect end); damage creation records its numeric value and
+target actor. Generic effects may have an unknown source/actor (zero). Local
+buff records expose stat, source, duration and estimated expiry in process uptime;
+buff icons have independent render/end observations. Skill support remains the
+client's existing support; an observation does not implement a missing skill.
+
+Snapshots include local/remote action, stance, velocity, foothold and climbing,
+mob HP percentage (null before an update), stance/death state, spawn temporary
+status masks/records, drop item/meso/owner/pickup state, and reactor state. Spawn
+status records are packet observations, not a maintained active-status model;
+subsequent unsupported status packets remain visible as packet errors. Ground
+item packets omit stack quantity, so `quantity` is null. Remote `grounded` is
+also null: this fan client's remote physics flag can remain true in flight.
+`physics_grounded` exposes that flag explicitly; `movement` exposes the last
+received/applied movement's stance byte, foothold, coordinates and duration.
+Use those values with `motion` transition events to inspect jumps, landings and
+ladder/rope entry/exit, without taking screenshots every frame.
+
+Each object array is capped at 512 with `<kind>_truncated`; retained mob packet
+metadata is capped at 2,048 and motion actors at 512. Existing inventory contents
+and UI window flags remain available; `ui.chat_input_open` lets native chat
+scripts wait for input ownership instead of assuming a fixed delay.
+
+`act observe pause` pauses periodic snapshots (one final paused marker is
+written); actions and event recording continue. `status` reports `paused` and
+snapshot predicates reject stale values until `act observe resume`. These
+controls are for bounded diagnostics, not a replacement for normal health
+checks. `act observe stats` emits progress/frame/export counters and total/max
+snapshot export microseconds, including serialization and atomic file writing.
+Enable/disable tracing resets these measurement counters. Compare quiet paused,
+export-on and trace-on windows; render throughput is sensitive to host load.
+All headless launches force `ALSOFT_DRIVERS=null`.
+
+## Loot, chairs and inventory diagnostics (M163)
+
+All actions below dispatch ordinary gameplay packets; snapshots change only when
+normal client gameplay or server replies update the model. They do not grant,
+remove or edit inventory items through the automation interface.
+
+- `act pickup` uses the same settled-drop selection and centred 32 × 24 pixel
+  half-range as the native loot action, and sends the player's actual position.
+  It rejects when no settled drop is in range. Ownership, inventory space and
+  server timing can still reject a dispatched request; wait for the inventory
+  change and field removal separately. Use the character's actual key binding
+  for native input (the demo fixture binds pickup to X).
+- `act sit` uses the existing nearby map-seat path. `act chair <setup-slot>` and
+  native SETUP double-click use the held chair item; `act stand` or native
+  Up/Left/Right/Jump requests cancellation. Local/remote snapshots expose `chair`
+  and `chair_asset`; chair events distinguish model state and actual asset draw
+  invocation. Portable-chair use has no item-specific server acknowledgement;
+  its local model is predictive, while a peer's SHOW_CHAIR confirms the server
+  broadcast. Spawn packets retain chairs for players who arrive later. Draw
+  events do not prove pixel correctness or original-client compatibility.
+- `act item-move <equip|use|setup|etc|cash> <source> <destination> <whole-count>`
+  requests a whole-stack move, swap or merge within the tab.
+  `act item-drop <tab> <slot> <quantity>` requests a quantity drop. Invalid slots,
+  quantities and cash/static-untradable drops reject; protected drops requiring
+  confirmation can still use the normal inventory UI. Server validation remains
+  authoritative. `act item-split ...` explicitly rejects: Java's v83 move handler
+  ignores quantity for moves and cannot split into another slot. No local split
+  or invented packet extension is used.
+- `act scripted-item <use-slot>` sends SCRIPTED_ITEM for the 243xxxx family;
+  `act use-item <use-slot>` rejects that family. Native USE double-click and item
+  bindings choose the matching packet through the same player method. The
+  server resolves the WZ script name and executes the copied script. The two
+  copied item scripts perform effects and dispose without opening dialogue;
+  dispatch alone does not establish a script effect or dialogue.
+
+Inventory entries now include `tooltip` name/description/valid/cash/untradable,
+`flags`, `owner` and `expiry_raw` (the unconverted 64-bit wire time, including
+sentinels). Equipment also includes every received stat, upgrade slots/level and
+hammer count. Pet metadata unavailable through these models is explicitly null.
+These are model data and shared tooltip inputs, not an assertion that a tooltip
+was rendered. Ground-drop quantity stays null because its packet omits count.
+
+State predicates support both dotted and bracket indices, for example
+`inventory.use[0].count==20`, and JSON collection equality such as `drops==[]`.
+Malformed expressions reject; collection equality does not attempt ordering.
+
+
+### Skill controls (M164, live acceptance pending)
+
+- `act skill-learn <id>` requests one SP through the normal SpendSp packet;
+  job, SP, maximum level and prerequisites are checked. Wait for `skills` and
+  `player.sp` to change; dispatch is not a learned-level confirmation.
+- `act skill-assign <Maple-keycode> <id>` binds a learned active skill through
+  the native keyboard map and ChangeKeyMap packet. Keycodes are Maple codes,
+  not X key names. `act skill-use <id>` uses the existing combat path and rejects
+  unlearned/passive skills, unavailable player states, cooldowns and insufficient
+  known resources. The server remains authoritative for MP and ammunition.
+- `act skill-down <id>` / `act skill-up <id>` share native skill-key handling.
+  Hurricane, Wind Archer Hurricane and Rapid Fire repeat through the existing
+  attack-animation cadence while held. Piercing Arrow and the three Big Bang
+  variants release an attack on key-up. The local hold ends after 30 seconds,
+  on death or field reset; `act skill-cancel` ends it without a release attack.
+  WZ prepare/keydown assets are drawn when available. This does not establish
+  original-client timing or visual compatibility.
+- `act buff-cancel <id>` requests cancellation of a currently active buff;
+  snapshots/icons clear on the server response, not dispatch.
+
+`skills` exports received levels, master levels and raw expiry (512 entries,
+with `skills_truncated`); `player` exports AP/SP. `charge` exports the held skill,
+elapsed simulation milliseconds and asset availability; remote characters expose
+`charge_skill`/`charge_asset`. `summons` is capped at128 records and exports owner,
+object/skill/level, position, movement mode and animation/asset state. Spawn,
+remove and attack packets are decoded. Automatic attacks currently cover only
+first-job Cygnus summons with a WZ radius and attack animation; follow movement is
+not implemented (`follow_supported:false`). Other summons have no automated
+attack support. Generic foreign buff mask/value updates and cancellations are
+exported separately; specialized foreign layouts emit an unsupported observation.
+No new compatible-client acceptance is implied by these capabilities.
+
+### Cash Shop controls (M165)
+
+Use `act cash-enter` and `act cash-exit`; exit uses the native button's fade and
+channel reconnect path. Wait for `screen==cash_shop` / `screen==in_game` and a
+new `navigation.field_entry_seq` to establish the return, rather than dispatch.
+
+- `act cash-buy <currency> <commodity-serial>` buys a single product; currency
+  `1` is NX Credit, `2` Maple Points, `4` NX Prepaid. Use a real server commodity
+  serial. The sample product list was removed; catalogue browsing/package buying
+  is not implemented by these controls.
+- `act cash-retrieve <cash-id>` retrieves an entry from the received cash
+  inventory. The normal character inventory changes only on the acknowledgement.
+- `act cash-gift <YYYYMMDD> <commodity-serial> <character> <message>` sends a
+  gift through the server's birthday/recipient/funds checks.
+- `act cash-coupon <code>` redeems a code. Codes are ordinary action arguments;
+  use disposable codes for automated tests and diagnostic bundles.
+- `act cash-name-rules <YYYYMMDD>` and `act cash-world-rules <YYYYMMDD>` request
+  eligibility. A readable panel displays the received result/code. Actual
+  name registration and world transfer are outside these controls.
+
+`cash_shop` contains received balances with `balances_known`, cash inventory
+with `inventory_known`, gifts, `pending`, `result`, `message`, `rules`,
+`rules_error`, and a revision counter. Cash IDs and raw expiry are strings to
+avoid JSON integer precision loss. Inventory/gift lists are bounded to512 entries;
+exceeding the bound fails explicitly. Gift-summary packets do not include
+quantity/serial/expiry; their zero defaults are unavailable values, not receipts
+for a particular quantity. Gift messages are not exported. `server_reenabled`
+means the server sent enable-actions without a reason; it does not diagnose
+insufficient funds by itself. Unsupported operation codes emit `cash_unsupported`.
+Balances and transaction state reset on login and Cash Shop entry.
+
+Muted disposable live checks confirmed two entries/returns, a real purchase and
+retrieval, unchanged state on insufficient funds, one-use coupon refusal on
+reuse, gift acknowledgement and name/world result panels. These are fan-client
+observations (`X?`). The skin layout still mixes asset generations, and this
+panel is not an original-client rules dialog. All headless invocations continue
+to force `ALSOFT_DRIVERS=null`; missing/short audio payloads are rejected before
+entering the decoder.
+
+### M166 reset actions (partial)
+
+`act ap-reset <cash-slot> <destination> <source>` accepts `str`, `dex`, `int`,
+`luk`, `hp`, or `mp`, with an AP Reset (5050000) in that received CASH slot.
+`act sp-reset <cash-slot> <destination-skill-id> <source-skill-id>` requires an
+SP Reset (505 family other than 5050000). Both reject identical targets, dead
+players, movement holds and active dialogs/Cash Shop. The server validates
+stat minima, skill eligibility and consumption. The acknowledgement means
+packet dispatch, not a successful reset. Watch received inventory and player
+stats/skills for the outcome. No local stat/item mutation is performed.
+Snapshots now include base `player.str`, `dex`, `int`, and `luk`.
+
+Muted fan observations verified STR→DEX and Power Strike→Slash Blast with
+one item consumed each. The dialog continuation below adds native and MP→HP
+coverage; other M166 item families remain open, so M166 is not complete.
+
+
+M166 reset dialog continuation: double-click an AP/SP reset in the Cash inventory,
+or run `act reset-open <cash-slot>`. Enter destination then source (`dex str` for
+AP; `1001005 1001004` for SP), then Confirm/Return; Cancel/Escape sends nothing.
+A readable panel is provided even when Notice6 assets are absent. Invalid input
+stays open with an error. The dialog and `ap-reset`/`sp-reset` actions share
+validation, including received slot identity, live character, different targets,
+and a learned SP source plus available destination metadata. No stats or items
+change optimistically. `reset_dialog` exports slot/item/input/error while open,
+otherwise null. The server may refuse a dispatched request, including its
+three-second cash-use cooldown; observe the notice and received state.
+Muted checks observed button-based AP and SP changes/consumption, MP→HP pool
+changes, cancellation, local validation and explicit minimum-INT/cooldown refusal.
+These are fan-only X? observations. Other M166 item families remain open.

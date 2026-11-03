@@ -38,6 +38,7 @@ namespace ms
 		void draw(float inter) const override;
 
 		void update() override;
+		bool respond(bool confirm);
 
 		Cursor::State send_cursor(bool clicked, Point<int16_t> cursorpos) override;
 

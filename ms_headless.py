@@ -484,7 +484,7 @@ def cmd_batch(args) -> None:
         die("batch input must be a JSON array of action arrays")
     if not isinstance(actions, list) or not 1 <= len(actions) <= 10:
         die("batch must contain between 1 and 10 actions")
-    allowed = {"login-notice", "pic-cancel", "world-choose", "channel-choose", "channel-change", "character-choose", "character-enter", "character-back", "npc-talk", "npc-choose", "use-item", "equip", "unequip", "window",
+    allowed = {"observe", "login-notice", "pic-cancel", "world-choose", "channel-choose", "channel-change", "logout", "character-choose", "character-enter", "character-back", "character-delete", "view-all", "npc-talk", "npc-choose", "pickup", "sit", "stand", "chair", "item-move", "item-drop", "item-split", "cash-enter", "cash-exit", "cash-buy", "cash-gift", "cash-retrieve", "cash-coupon", "cash-name-rules", "cash-world-rules", "skill-use", "skill-down", "skill-up", "skill-cancel", "skill-learn", "skill-assign", "buff-cancel", "reset-open", "ap-reset", "sp-reset", "scripted-item", "use-item", "equip", "unequip", "window",
                "move", "jump", "portal", "attack", "party-create",
                "party-leave", "party-invite", "party-accept"}
     for item in actions:
@@ -606,7 +606,7 @@ def cmd_mark(args) -> None:
 
 EXIT_GONE = 2
 EXIT_TIMEOUT = 3
-STATE_EXPR = re.compile(r"^\s*([A-Za-z0-9_.]+)\s*(==|!=|>=|<=|>|<|~)?\s*(.*?)\s*$")
+STATE_EXPR = re.compile(r"^\s*([A-Za-z0-9_.]+(?:\[\d+\][A-Za-z0-9_.]*)*)\s*(==|!=|>=|<=|>|<|~)?\s*(.*?)\s*$")
 
 
 def load_state_json() -> dict | None:
@@ -628,7 +628,8 @@ def snapshot_diagnostic(snapshot: dict | None, session: dict) -> dict:
         age = max(0.0, time.time() - (STATE_DIR / "state.json").stat().st_mtime)
     except OSError:
         return {"health": "waiting", "reason": "snapshot file is unavailable"}
-    health = "healthy" if age <= 2.0 else "stalled"
+    health = ("paused" if snapshot.get("observation", {}).get("export_paused")
+              else "healthy" if age <= 2.0 else "stalled")
     return {"health": health, "age_seconds": round(age, 3),
             "session_id": snapshot["session_id"], "seq": snapshot["seq"],
             "progress": snapshot.get("progress"), "screen": snapshot.get("screen"),
@@ -636,7 +637,7 @@ def snapshot_diagnostic(snapshot: dict | None, session: dict) -> dict:
 
 
 def lookup(data, path: str):
-    for part in path.split("."):
+    for part in re.sub(r"\[(\d+)\]", r".\1", path).split("."):
         try:
             data = data[int(part)] if isinstance(data, list) else data[part]
         except (KeyError, IndexError, ValueError, TypeError):
@@ -654,17 +655,31 @@ def state_matches(expr: str, data: dict | None) -> bool:
     path, op, want = m.groups()
     got = lookup(data, path)
     if op is None:
+        if want:
+            die(f"Bad --state expression: {expr!r}")
         return bool(got)
     if got is None:
         return False
     if op == "~":
         return want in str(got)
     try:
-        want_v = type(got)(want) if not isinstance(got, bool) else want.lower() == "true"
-    except ValueError:
+        if isinstance(got, (list, dict)):
+            want_v = json.loads(want)
+        elif isinstance(got, bool):
+            if want.lower() not in ("true", "false"):
+                return False
+            want_v = want.lower() == "true"
+        else:
+            want_v = type(got)(want)
+        if op == "==": return got == want_v
+        if op == "!=": return got != want_v
+        if op == ">=": return got >= want_v
+        if op == "<=": return got <= want_v
+        if op == ">": return got > want_v
+        if op == "<": return got < want_v
+    except (ValueError, TypeError):
         return False
-    return {"==": got == want_v, "!=": got != want_v, ">=": got >= want_v,
-            "<=": got <= want_v, ">": got > want_v, "<": got < want_v}[op]
+    return False
 
 
 def last_seq() -> int:
@@ -702,6 +717,8 @@ def wait_for(state: dict, timeout: float, *, state_expr: str | None = None,
         if diagnostic["health"] == "incompatible":
             print(f"Client snapshot is incompatible: {json.dumps(diagnostic)}", file=sys.stderr)
             raise SystemExit(EXIT_GONE)
+        if state_expr is not None and diagnostic["health"] == "paused":
+            die("Snapshot export is paused; run act observe resume before waiting for state")
         if state_expr is not None and state_matches(state_expr, snapshot):
             return {"state": state_expr}
         if event_types is not None or text is not None:
@@ -935,8 +952,8 @@ def main() -> None:
                     help="Seconds to wait for --wait-state (defaults to --timeout)")
     sp.add_argument("--wait-state", help="Wait for a state predicate after submitting chat")
     sp.set_defaults(func=cmd_gm)
-    sp = sub.add_parser("act", help="Semantic action: character-choose <name>, npc-talk <oid>, npc-choose next|yes|no|prev|close|<n>, use-item <slot>, equip <slot>, unequip <slot>, window <stats|items|equipment> <open|close>, move left|right|up|down <ms>, jump, portal, attack")
-    sp.add_argument("action", choices=["login-notice", "pic-cancel", "world-choose", "channel-choose", "channel-change", "character-choose", "character-enter", "character-back", "npc-talk", "npc-choose", "use-item", "equip", "unequip", "window", "move", "jump", "portal", "attack", "party-create", "party-leave", "party-invite", "party-accept"])
+    sp = sub.add_parser("act", help="Semantic action: pickup, sit, stand, chair <setup-slot>, item-move <tab> <src> <dst> <whole-count>, item-drop <tab> <slot> <quantity>, scripted-item <use-slot>, character-choose <name>, npc-talk <oid>, npc-choose next|yes|no|prev|close|<n>, use-item <slot>, equip <slot>, unequip <slot>, window <stats|items|equipment> <open|close>, move left|right|up|down <ms>, jump, portal, attack")
+    sp.add_argument("action", choices=["observe", "login-notice", "pic-cancel", "world-choose", "channel-choose", "channel-change", "logout", "character-choose", "character-enter", "character-back", "character-delete", "view-all", "npc-talk", "npc-choose", "pickup", "sit", "stand", "chair", "item-move", "item-drop", "item-split", "cash-enter", "cash-exit", "cash-buy", "cash-gift", "cash-retrieve", "cash-coupon", "cash-name-rules", "cash-world-rules", "skill-use", "skill-down", "skill-up", "skill-cancel", "skill-learn", "skill-assign", "buff-cancel", "reset-open", "ap-reset", "sp-reset", "scripted-item", "use-item", "equip", "unequip", "window", "move", "jump", "portal", "attack", "party-create", "party-leave", "party-invite", "party-accept"])
     sp.add_argument("arg", nargs="*")
     sp.add_argument("--timeout", type=float, default=5.0)
     sp.add_argument("--completion-timeout", type=float, help="Seconds to wait for --wait-state (defaults to --timeout)")

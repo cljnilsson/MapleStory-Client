@@ -17,6 +17,7 @@
 //////////////////////////////////////////////////////////////////////////////////
 #include "../../HeadlessState.h"
 #include "SetFieldHandlers.h"
+#include "CashShopHandlers.h"
 
 #include "Timer.h"
 
@@ -63,10 +64,13 @@ namespace ms
 
 	void SetFieldHandler::handle(InPacket& recv) const
 	{
+		CashShopState::get().opened = false;
+		CashShopState::get().pending.clear();
 		Constants::Constants::get().set_viewwidth(Setting<Width>::get().load());
 		Constants::Constants::get().set_viewheight(Setting<Height>::get().load());
 
 		int32_t channel = recv.read_int();
+		if (channel >= 0 && channel < 20) Configuration::get().set_channelid(channel);
 		int8_t mode1 = recv.read_byte();
 		int8_t mode2 = recv.read_byte();
 
@@ -104,16 +108,7 @@ namespace ms
 			return;
 
 		Player& player = Stage::get().get_player();
-		StatsEntry stats = LoginParser::parse_stats(recv);
-		if (!charselect)
-		{
-			player.get_stats() = CharStats(stats);
-			player.get_inventory() = Inventory();
-			player.get_skills() = SkillBook();
-			player.get_quests() = QuestLog();
-			player.get_teleport_rock() = TeleportRock();
-			player.get_monsterbook() = MonsterBook();
-		}
+		player.reset_field_data(LoginParser::parse_stats(recv));
 
 		recv.read_byte(); // 'buddycap'
 

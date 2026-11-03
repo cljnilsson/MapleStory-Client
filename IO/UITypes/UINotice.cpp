@@ -23,6 +23,11 @@
 #include "../Audio/Audio.h"
 
 #include <nlnx/nx.hpp>
+#include <sstream>
+#include "../Components/AreaButton.h"
+#include "../../Graphics/Geometry.h"
+#include "../../Gameplay/Stage.h"
+#include "../../Net/Packets/InventoryPackets.h"
 
 namespace ms
 {
@@ -310,6 +315,112 @@ namespace ms
 		}
 
 		buttons[Buttons::OK]->set_state(Button::State::NORMAL);
+	}
+
+	UICashReset::UICashReset(int16_t s, int32_t i)
+		: UINotice(i == 5050000
+			? "AP Reset: enter destination then source.\\nChoose str dex int luk hp mp."
+			: "SP Reset: enter destination skill ID then source skill ID.", NoticeType::ENTERNUMBER), slot(s), item(i)
+	{
+		// The v83 asset set may lack Notice6. This panel is also the fallback skin.
+		position = Point<int16_t>(240, 190);
+		dimension = Point<int16_t>(320, 180);
+		dragarea = Point<int16_t>(320, 24);
+		prompt = Text(Text::Font::A12M, Text::Alignment::LEFT, Color::Name::WHITE,
+			i == 5050000 ? "AP Reset: destination then source\\nstr dex int luk hp mp"
+				: "SP Reset: destination skill ID\\nthen source skill ID", 290);
+		confirm_label = Text(Text::Font::A12M, Text::Alignment::LEFT, Color::Name::BLACK, "Confirm");
+		cancel_label = Text(Text::Font::A12M, Text::Alignment::LEFT, Color::Name::BLACK, "Cancel");
+		values = Textfield(Text::Font::A11M, Text::Alignment::LEFT, Color::Name::LIGHTGREY,
+			Rectangle<int16_t>(20, 300, 65, 88), 24);
+		values.set_enter_callback([this](std::string) { submit(); });
+		values.set_key_callback(KeyAction::Id::ESCAPE, [this]() { values.set_state(Textfield::State::DISABLED); deactivate(); });
+		values.set_state(Textfield::State::FOCUSED);
+		buttons[0] = std::make_unique<AreaButton>(Point<int16_t>(130, 145), Point<int16_t>(80, 25));
+		buttons[1] = std::make_unique<AreaButton>(Point<int16_t>(220, 145), Point<int16_t>(80, 25));
+	}
+
+	std::string UICashReset::request(int16_t slot, int32_t item, const std::string &text)
+	{
+		auto &player = Stage::get().get_player();
+		if (slot < 1 || player.get_inventory().get_item_id(InventoryType::CASH, slot) != item)
+			return "Reset item moved or missing.";
+		if (player.get_stats().get_stat(MapleStat::HP) == 0) return "Player must be alive.";
+		std::istringstream input(text);
+		std::string to, from, extra;
+		if (!(input >> to >> from) || input >> extra) return "Enter destination then source.";
+		int32_t dest = 0, source = 0;
+		if (item == 5050000)
+		{
+			auto stat = [](const std::string &s) -> int32_t {
+				if (s == "str") return 0x40;
+				if (s == "dex") return 0x80;
+				if (s == "int") return 0x100;
+				if (s == "luk") return 0x200;
+				if (s == "hp") return 0x800;
+				if (s == "mp") return 0x2000;
+				return 0;
+			};
+			dest = stat(to); source = stat(from);
+		}
+		else if (item > 5050000 && item / 10000 == 505)
+		{
+			auto skill = [](const std::string &s, int32_t &n) {
+				std::istringstream input(s); char tail;
+				return bool(input >> n) && !(input >> tail) && n > 0;
+			};
+			if (!skill(to, dest) || !skill(from, source)) return "Enter positive skill IDs.";
+			// The server consumes a reset with an unknown source: refuse that locally.
+			if (player.get_skilllevel(source) <= 0) return "Source skill has no learned levels.";
+			std::string skillid = std::to_string(dest);
+			if (skillid.size() < 7) skillid.insert(0, 7 - skillid.size(), '0');
+			if (!nl::nx::skill[std::to_string(dest / 10000) + ".img"]["skill"][skillid])
+				return "Destination skill is unavailable.";
+		}
+		if (!dest || !source || dest == source) return "Choose two different valid targets.";
+		CashResetPacket(slot, item, dest, source).dispatch();
+		return "";
+	}
+
+	void UICashReset::submit()
+	{
+		auto message = request(slot, item, values.get_text());
+		last_error = message;
+		if (message.empty()) { values.set_state(Textfield::State::DISABLED); deactivate(); }
+		else error = Text(Text::Font::A11M, Text::Alignment::LEFT, Color::Name::WHITE, message, 230);
+	}
+
+	void UICashReset::draw(float alpha) const
+	{
+		ColorBox(320, 180, Color::Name::WHITE, 1.0f).draw(position);
+		ColorBox(318, 178, Color::Name::BLACK, 0.95f).draw(position + Point<int16_t>(1, 1));
+		ColorBox(282, 25, Color::Name::WHITE, 1.0f).draw(position + Point<int16_t>(19, 64));
+		ColorBox(280, 23, Color::Name::BLACK, 1.0f).draw(position + Point<int16_t>(20, 65));
+		ColorBox(80, 25, Color::Name::WHITE, 1.0f).draw(position + Point<int16_t>(130, 145));
+		ColorBox(80, 25, Color::Name::WHITE, 1.0f).draw(position + Point<int16_t>(220, 145));
+		prompt.draw(position + Point<int16_t>(15, 12));
+		confirm_label.draw(position + Point<int16_t>(140, 150));
+		cancel_label.draw(position + Point<int16_t>(230, 150));
+		UIElement::draw(alpha); values.draw(position);
+		error.draw(position + Point<int16_t>(15, 100));
+	}
+	void UICashReset::update() { UIElement::update(); values.update(position); }
+	Cursor::State UICashReset::send_cursor(bool pressed, Point<int16_t> p)
+	{
+		auto state = values.send_cursor(p, pressed);
+		return state == Cursor::State::IDLE ? UIElement::send_cursor(pressed, p) : state;
+	}
+	void UICashReset::send_key(int32_t key, bool pressed, bool escape)
+	{
+		if (!pressed) return;
+		if (escape) { values.set_state(Textfield::State::DISABLED); deactivate(); }
+		else if (key == KeyAction::Id::RETURN) submit();
+	}
+	Button::State UICashReset::button_pressed(uint16_t button)
+	{
+		if (button == 0) submit();
+		else { values.set_state(Textfield::State::DISABLED); deactivate(); }
+		return Button::State::NORMAL;
 	}
 
 	UIOk::UIOk(std::string message, std::function<void(bool ok)> oh) : UINotice(message, NoticeType::OK)

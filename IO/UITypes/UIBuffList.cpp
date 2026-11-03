@@ -16,6 +16,7 @@
 //	along with this program.  If not, see <https://www.gnu.org/licenses/>.		//
 //////////////////////////////////////////////////////////////////////////////////
 #include "UIBuffList.h"
+#include "../../HeadlessState.h"
 
 #include "../Data/ItemData.h"
 #include "../Util/Misc.h"
@@ -35,7 +36,7 @@ namespace ms
 		if (buffid >= 0)
 		{
 			std::string strid = string_format::extend_id(buffid, 7);
-			nl::node src = nl::nx::skill[strid.substr(0, 3) + ".img"]["skill"][strid];
+			nl::node src = nl::nx::skill[strid.substr(0, strid.size() - 4) + ".img"]["skill"][strid];
 			icon = src["icon"];
 		} else
 		{
@@ -47,6 +48,11 @@ namespace ms
 	{
 		icon.draw(DrawArgument(position, opacity.get(alpha)));
 		cover.draw(position + Point<int16_t>(1, -31), alpha);
+		if (!observed_draw && HeadlessState::observing())
+		{
+			HeadlessState::presentation("render", "buff_icon", buffid);
+			observed_draw = true;
+		}
 	}
 
 	bool BuffIcon::update()
@@ -66,7 +72,9 @@ namespace ms
 
 		duration -= Constants::TIMESTEP;
 
-		return duration < Constants::TIMESTEP;
+		bool ended = duration < Constants::TIMESTEP;
+		if (ended) HeadlessState::presentation("end", "buff_icon", buffid);
+		return ended;
 	}
 
 	UIBuffList::UIBuffList()
@@ -117,8 +125,14 @@ namespace ms
 		return TYPE;
 	}
 
+	void UIBuffList::remove_buff(int32_t buffid)
+	{
+		if (icons.erase(buffid)) HeadlessState::presentation("end", "buff_icon", buffid);
+	}
+
 	void UIBuffList::add_buff(int32_t buffid, int32_t duration)
 	{
+		icons.erase(buffid);
 		icons.emplace(
 				std::piecewise_construct,
 				std::forward_as_tuple(buffid),

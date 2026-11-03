@@ -206,6 +206,92 @@ namespace ms
 		}
 	}
 
+	namespace
+	{
+		bool all_requested = false;
+		int all_expected = -1, all_received = 0;
+		int8_t all_pic = 2;
+		std::vector<CharEntry> all_characters;
+		std::map<int32_t, uint8_t> all_worlds;
+	}
+
+	void ViewAllCharHandler::reset()
+	{
+		all_requested = false;
+		all_expected = -1;
+		all_received = 0;
+		all_characters.clear();
+		all_worlds.clear();
+	}
+
+	bool ViewAllCharHandler::request()
+	{
+		auto worldselect = UI::get().get_element<UIWorldSelect>();
+		if (UI::get().is_element_active(UIElement::Type::SOFTKEYBOARD)
+			|| UI::get().is_element_active(UIElement::Type::LOGINNOTICE)
+			|| UI::get().is_element_active(UIElement::Type::LOGINNOTICE_CONFIRM)) return false;
+		auto charselect = UI::get().get_element<UICharSelect>();
+		bool from_characters = charselect && charselect->is_active() && !charselect->is_view_all();
+		if (!worldselect || (!worldselect->is_active() && !from_characters) || all_requested) return false;
+		if (from_characters) charselect->deactivate();
+		all_requested = true;
+		all_pic = LoginParser::account_pic_mode();
+		all_expected = -1;
+		all_received = 0;
+		all_characters.clear();
+		all_worlds.clear();
+		worldselect->deactivate();
+		OutPacket(OutPacket::Opcode::VIEW_ALL_CHAR).dispatch();
+		HeadlessState::set_screen("view_all_pending");
+		return true;
+	}
+
+	void ViewAllCharHandler::handle(InPacket& recv) const
+	{
+		if (!all_requested) return;
+		int status = static_cast<uint8_t>(recv.read_byte());
+		if (status == 1 || status == 5)
+		{
+			all_expected = recv.read_int();
+			recv.read_int(); // Display slots, not another character count.
+			if (all_expected < 0 || all_expected > 127 || (status == 5 && all_expected != 0))
+			{
+				all_requested = false;
+				HeadlessState::event("view_all_error", ",\"reason\":\"unsupported character count\"");
+				if (auto worldselect = UI::get().get_element<UIWorldSelect>()) worldselect->makeactive();
+				HeadlessState::set_screen("world_select");
+				return;
+			}
+		}
+		else if (status == 0 && all_expected >= 0)
+		{
+			uint8_t world = recv.read_byte();
+			unsigned count = static_cast<uint8_t>(recv.read_byte());
+			if (all_received + count > all_expected) throw PacketError("View All count overflow");
+			for (unsigned i = 0; i < count; ++i)
+			{
+				auto character = LoginParser::parse_charentry(recv, true);
+				++all_received;
+				// The server pads its last row with duplicate entries.
+				if (all_worlds.emplace(character.id, world).second)
+					all_characters.push_back(std::move(character));
+			}
+			int8_t pic = recv.read_byte();
+			if (pic != 1 && pic != 2) throw PacketError("Invalid View All PIC mode");
+			all_pic = pic == 2 ? 2 : (LoginParser::account_pic_mode() == 0 ? 0 : 1);
+		}
+		else return;
+		if (all_expected < 0 || all_received != all_expected) return;
+		all_requested = false;
+		UI::get().remove(UIElement::Type::LOGINWAIT);
+		UI::get().remove(UIElement::Type::LOGINNOTICE);
+		if (auto worldselect = UI::get().get_element<UIWorldSelect>()) worldselect->remove_selected();
+		UI::get().emplace<UICharSelect>(all_characters, static_cast<int8_t>(all_characters.size()),
+			std::max(8, static_cast<int>(all_characters.size())), all_pic, all_worlds, true);
+		HeadlessState::event("view_all_result", ",\"count\":" + std::to_string(all_characters.size()));
+		HeadlessState::set_screen("character_select");
+	}
+
 	void ServerIPHandler::handle(InPacket& recv) const
 	{
 		recv.skip_byte();
@@ -278,6 +364,8 @@ namespace ms
 		// Read the character id and if deletion was successful (PIC was correct)
 		int32_t cid = recv.read_int();
 		uint8_t state = recv.read_byte();
+		HeadlessState::event("character_delete_result", ",\"character_id\":" + std::to_string(cid)
+			+ ",\"status\":" + std::to_string(state) + ",\"ok\":" + (state == 0 ? "true" : "false"));
 
 		// Extract information from the state byte
 		if (state)

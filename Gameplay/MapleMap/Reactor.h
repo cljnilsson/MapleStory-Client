@@ -46,6 +46,9 @@ namespace ms
 		// Check if this mob collides with the specified rectangle.
 		bool is_in_range(const Rectangle<int16_t> &range) const;
 
+		int32_t get_id() const { return rid; }
+		int get_state() const { return state; }
+
 	private:
 		int32_t oid;
 		int32_t rid;
