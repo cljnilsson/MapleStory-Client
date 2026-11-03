@@ -196,6 +196,22 @@ namespace ms
 			if (s.inventory.size() >= 512) throw PacketError("Cash inventory exceeds bound");
 			s.inventory.push_back(std::move(item)); s.finish(op == 0x57 ? "purchase" : "deposit");
 		}
+		else if (op == 0x89)
+		{
+			const uint8_t count = uint8_t(recv.read_byte());
+			if (s.inventory.size() + count > 512) throw PacketError("Cash inventory exceeds bound");
+			std::vector<CashShopState::Item> items;
+			for (uint8_t i = 0; i < count; ++i) items.push_back(cash_item(recv));
+			recv.skip_short();
+			s.inventory.insert(s.inventory.end(), items.begin(), items.end()); s.finish("purchase");
+		}
+		else if (op == 0x87)
+		{
+			auto item = cash_item(recv);
+			recv.skip_string(); recv.skip_int(); recv.skip_short();
+			if (s.inventory.size() >= 512) throw PacketError("Cash inventory exceeds bound");
+			s.inventory.push_back(std::move(item)); s.finish("purchase");
+		}
 		else if (op == 0x68)
 		{
 			const int16_t slot = recv.read_short();
