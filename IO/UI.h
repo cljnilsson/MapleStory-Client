@@ -131,6 +131,7 @@ namespace ms
 		Cursor cursor;
 		ScrollingNotice scrollingnotice;
 		Text hint_text;
+		int16_t hint_width = 400;
 		ColorBox hint_background;
 		std::chrono::steady_clock::time_point hint_expires;
 		Text death_text;

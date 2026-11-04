@@ -341,7 +341,7 @@ namespace ms
 				switch (tab)
 				{
 					case InventoryType::Id::CASH:
-						if (item_id / 10000 == 505) UI::get().emplace<UICashReset>(slot, item_id);
+						if (UICashItemDialog::supports(item_id)) UI::get().emplace<UICashItemDialog>(slot, item_id);
 						break;
 					case InventoryType::Id::EQUIP:
 						if (can_wear_equip(slot))

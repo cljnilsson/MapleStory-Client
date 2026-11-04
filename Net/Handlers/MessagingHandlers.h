@@ -20,9 +20,71 @@
 #include "../PacketHandler.h"
 
 #include "../../Graphics/Text.h"
+#include "../../Character/Look/CharLook.h"
+#include <chrono>
+#include <deque>
+#include <ostream>
+#include <memory>
+#include "../../Graphics/Animation.h"
 
 namespace ms
 {
+	// Received server broadcasts. Lifetimes end on server removal packets.
+	struct BroadcastDisplay
+	{
+		std::string family, owner, message;
+		int32_t id = 0, item = 0, channel = 0, x = 0, y = 0, foothold = 0;
+		bool active = false, ear = false;
+		uint64_t draws = 0;
+		int64_t cleared_ms = -1;
+		std::chrono::steady_clock::time_point received = std::chrono::steady_clock::now();
+		std::shared_ptr<CharLook> look, partner;
+		std::string partner_name;
+		Text title_text;
+		std::vector<Text> lines;
+		std::string layout_title;
+		int layout_width = 0;
+		Animation effect;
+		std::string asset_path;
+		bool asset = false;
+		int64_t age_ms() const;
+	};
+	class BroadcastState
+	{
+	public:
+		static BroadcastState &get();
+		std::deque<BroadcastDisplay> notices;
+		BroadcastDisplay avatar, tv, weather;
+		std::map<int32_t, BroadcastDisplay> kites;
+		void notice(BroadcastDisplay display);
+		void draw(Point<int16_t> view) ;
+		void update();
+		void clear_field();
+		void snapshot(std::ostream &out) const;
+	};
+	class BroadcastEffectHandler : public PacketHandler
+	{
+	public:
+		explicit BroadcastEffectHandler(int opcode) : opcode(opcode) {}
+		void handle(InPacket &recv) const override;
+	private:
+		int opcode;
+	};
+
+	template<int Opcode> class BroadcastHandler : public BroadcastEffectHandler
+	{ public: BroadcastHandler() : BroadcastEffectHandler(Opcode) {} };
+
+	class SocialChatHandler : public PacketHandler
+	{
+	public:
+		explicit SocialChatHandler(int opcode) : opcode(opcode) {}
+		void handle(InPacket &recv) const override;
+	private:
+		int opcode;
+	};
+	template<int Opcode> class SocialHandler : public SocialChatHandler
+	{ public: SocialHandler() : SocialChatHandler(Opcode) {} };
+
 	// Show a status message
 	// Opcode: SHOW_STATUS_INFO(39)
 	class ShowStatusInfoHandler : public PacketHandler

@@ -1,3 +1,5 @@
+#include "../IO/UITypes/UIMarket.h"
+#include "../Graphics/Geometry.h"
 //////////////////////////////////////////////////////////////////////////////////
 //	This file is part of the continued Journey MMORPG client					//
 //	Copyright (C) 2015-2019  Daniel Allendorf, Ryan Payton						//
@@ -106,6 +108,11 @@ namespace ms
 
 		// If ever changing code for namelabel confirm placements with map 10000
 		namelabel.draw(absp + Point<int16_t>(0, -4));
+        auto shop=MarketState::get().boxes.find(oid);
+        if(shop!=MarketState::get().boxes.end()&&shop->second.type==4) {
+            ColorBox(190,40,Color::Name::BLACK,0.9f).draw(absp-Point<int16_t>(95,114));
+            shop->second.label.draw(absp-Point<int16_t>(0,110));
+        }
 		chatballoon.draw(absp - Point<int16_t>(0, 85));
 
 		effects.drawabove(absp, alpha);

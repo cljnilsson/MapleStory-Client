@@ -21,6 +21,8 @@
 #include "../../Gameplay/Stage.h"
 
 #include <nlnx/nx.hpp>
+#include <ctime>
+#include "../../Graphics/Geometry.h"
 
 namespace ms
 {
@@ -104,11 +106,6 @@ namespace ms
 
 	void EquipTooltip::set_equip(Tooltip::Parent parent, int16_t ivp)
 	{
-		if (invpos == ivp)
-			return;
-
-		invpos = ivp;
-		invpos_preview = 0;
 
 		const Player &player = Stage::get().get_player();
 
@@ -128,7 +125,18 @@ namespace ms
 		}
 
 		const Inventory &inventory = player.get_inventory();
-		auto oequip = inventory.get_equip(invtype, invpos);
+		auto oequip = inventory.get_equip(invtype, ivp);
+		if (!oequip) { invpos = 0; return; }
+		std::string metadata = std::to_string(int(invtype)) + ":" + std::to_string(oequip->get_item_id())
+			+ ":" + oequip->get_owner() + ":" + std::to_string(oequip->get_flags())
+			+ ":" + std::to_string(oequip->get_expiration()) + ":" + std::to_string(oequip->get_slots())
+			+ ":" + std::to_string(oequip->get_vicious()) + ":" + std::to_string(oequip->get_level());
+		for (int stat = EquipStat::STR; stat <= EquipStat::JUMP; ++stat)
+			metadata += ":" + std::to_string(oequip->get_stat(static_cast<EquipStat::Id>(stat)));
+		if (invpos == ivp && metadata == cached_metadata) return;
+		cached_metadata = metadata;
+		invpos = ivp;
+		invpos_preview = 0;
 		const CharStats &stats = player.get_stats();
 
 		if (invtype == InventoryType::Id::EQUIP)
@@ -543,6 +551,23 @@ namespace ms
 			height -= 36;
 		}
 
+		cash_metadata.clear();
+		auto add_metadata = [this](const std::string &value) {
+			cash_metadata.emplace_back(Text::Font::A11M, Text::Alignment::LEFT, Color::Name::WHITE, value, 250);
+			height += cash_metadata.back().height() + 3;
+		};
+		if (!equip.get_owner().empty()) add_metadata("Owner: " + equip.get_owner());
+		if (equip.get_flags() & 1) add_metadata("Sealed (locked)");
+		if (equip.get_flags() & 0x10) add_metadata("Scissors of Karma applied");
+		if (equip.get_expiration() != 150842304000000000LL)
+		{
+			std::time_t seconds = equip.get_expiration() / 10000000LL - 11644473600LL;
+			if (auto date = std::gmtime(&seconds))
+			{
+				char text[40];
+				if (std::strftime(text, sizeof(text), "Expires: %Y-%m-%d %H:%M UTC", date)) add_metadata(text);
+			}
+		}
 		statlabels.clear();
 
 		for (EquipStat::Id es = EquipStat::Id::STR; es <= EquipStat::Id::JUMP; es = static_cast<EquipStat::Id>(es + 1))
@@ -577,11 +602,11 @@ namespace ms
 
 		int16_t max_width = Constants::Constants::get().get_viewwidth();
 		int16_t max_height = Constants::Constants::get().get_viewheight();
-		int16_t cur_width = pos.x() + top.width();
+		int16_t cur_width = pos.x() + (top.width() ? top.width() : 260);
 		int16_t cur_height = pos.y() + 36;
 
 		if (invpos_preview == 1)
-			cur_width += top.width();
+			cur_width += top.width() ? top.width() : 260;
 
 		if (invpos_preview == 1)
 			cur_height += (height > height_preview) ? height : height_preview;
@@ -597,6 +622,11 @@ namespace ms
 		if (adj_y > 0)
 			pos.shift_y(adj_y * -1);
 
+		if (!top.width())
+		{
+			ColorBox(260, height + 26, Color::Name::WHITE, 1.0f).draw(pos);
+			ColorBox(258, height + 24, Color::Name::BLACK, 0.95f).draw(pos + Point<int16_t>(1, 1));
+		}
 		top.draw(pos);
 		mid.draw(DrawArgument(pos + Point<int16_t>(0, 13), Point<int16_t>(0, height)));
 		bot.draw(pos + Point<int16_t>(0, height + 13));
@@ -703,6 +733,11 @@ namespace ms
 			pos.shift_y(stat_y);
 		}
 
+		for (const auto &label : cash_metadata)
+		{
+			label.draw(pos + Point<int16_t>(stat_x, 0));
+			pos.shift_y(label.height() + 3);
+		}
 		if (hasdesc)
 		{
 			pos.shift_y(13);
@@ -716,11 +751,11 @@ namespace ms
 		if (invpos_preview == 0)
 			return;
 
-		pos.shift_x(top.width());
+		pos.shift_x(top.width() ? top.width() : 260);
 
 		int16_t max_width = Constants::Constants::get().get_viewwidth();
 		int16_t max_height = Constants::Constants::get().get_viewheight();
-		int16_t cur_width = pos.x() + top.width();
+		int16_t cur_width = pos.x() + (top.width() ? top.width() : 260);
 		int16_t cur_height = pos.y() + height_preview + 36;
 
 		int16_t adj_x = cur_width - max_width;
@@ -732,6 +767,11 @@ namespace ms
 		if (adj_y > 0)
 			pos.shift_y(adj_y * -1);
 
+		if (!top.width())
+		{
+			ColorBox(260, height_preview + 26, Color::Name::WHITE, 1.0f).draw(pos);
+			ColorBox(258, height_preview + 24, Color::Name::BLACK, 0.95f).draw(pos + Point<int16_t>(1, 1));
+		}
 		top.draw(pos);
 		mid.draw(DrawArgument(pos + Point<int16_t>(0, 13), Point<int16_t>(0, height_preview)));
 		bot.draw(pos + Point<int16_t>(0, height_preview + 13));

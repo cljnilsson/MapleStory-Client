@@ -112,6 +112,8 @@ namespace ms
 
 		void change_text(const std::string &text);
 
+		void change_maxwidth(uint16_t width);
+
 		void change_color(Color::Name color);
 
 		void set_background(Background background);

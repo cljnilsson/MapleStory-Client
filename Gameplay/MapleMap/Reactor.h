@@ -48,6 +48,7 @@ namespace ms
 
 		int32_t get_id() const { return rid; }
 		int get_state() const { return state; }
+		int get_event_type() const;
 
 	private:
 		int32_t oid;
@@ -60,10 +61,9 @@ namespace ms
 		//bool activates_by_touch;
 
 		nl::node src;
-		std::map<int8_t, Animation> animations;
+		Animation transition;
 		bool animation_ended;
 
-		bool hittable;
 		bool dead;
 
 		Animation normal;

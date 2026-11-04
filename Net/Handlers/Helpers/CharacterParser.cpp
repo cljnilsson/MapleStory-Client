@@ -1,3 +1,5 @@
+#include "../../../IO/UITypes/UISocial.h"
+#include <stdexcept>
 //////////////////////////////////////////////////////////////////////////////////
 //	This file is part of the continued Journey MMORPG client					//
 //	Copyright (C) 2015-2019  Daniel Allendorf, Ryan Payton						//
@@ -165,19 +167,16 @@ namespace ms
 
 	void CharacterParser::parse_ring3(InPacket& recv)
 	{
-		int16_t rsize = recv.read_short();
-
-		for (int16_t i = 0; i < rsize; i++)
-		{
-			recv.read_int();
-			recv.read_int();
-			recv.read_int();
-			recv.read_short();
-			recv.read_int();
-			recv.read_int();
-			recv.read_padded_string(13);
-			recv.read_padded_string(13);
-		}
+        // Java addRingInfo: retain the received relationship for wedding requests.
+        int count = recv.read_short();
+        if (count < 0 || count > 1) throw std::runtime_error("Invalid marriage record count");
+        auto &s = SocialState::get();
+        s.relationship_id = 0; s.groom_name.clear(); s.bride_name.clear();
+        for (int i = 0; i < count; ++i) {
+            s.relationship_id = recv.read_int(); s.groom_id = recv.read_int(); s.bride_id = recv.read_int();
+            s.marriage_status = recv.read_short(); recv.read_int(); recv.read_int();
+            s.groom_name = recv.read_padded_string(13); s.bride_name = recv.read_padded_string(13);
+        }
 	}
 
 	void CharacterParser::parse_minigame(InPacket& recv)
@@ -213,22 +212,12 @@ namespace ms
 
 	void CharacterParser::parse_nyinfo(InPacket& recv)
 	{
-		int16_t nysize = recv.read_short();
-
-		for (int16_t i = 0; i < nysize; i++)
-		{
-			recv.read_int();	// NewYear Id
-			recv.read_int();	// NewYear SenderId
-			recv.read_string();	// NewYear SenderName
-			recv.read_bool();	// NewYear enderCardDiscarded
-			recv.read_long();	// NewYear DateSent
-			recv.read_int();	// NewYear ReceiverId
-			recv.read_string();	// NewYear ReceiverName
-			recv.read_bool();	// NewYear eceiverCardDiscarded
-			recv.read_bool();	// NewYear eceiverCardReceived
-			recv.read_long();	// NewYear DateReceived
-			recv.read_string();	// NewYear Message
-		}
+  int count=recv.read_short();
+  if(count<0 || count>1024)throw std::runtime_error("New Year record limit");
+  auto &s=SocialState::get();
+  std::map<int32_t,NewYearCard> next;
+  for(int i=0;i<count;++i){auto c=NewYearCard::read(recv);next[c.id]=c;}
+  s.cards=std::move(next);++s.revision;
 	}
 
 	void CharacterParser::parse_areainfo(InPacket& recv)

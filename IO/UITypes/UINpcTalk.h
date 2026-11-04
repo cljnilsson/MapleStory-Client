@@ -18,9 +18,12 @@
 #pragma once
 
 #include "../UIElement.h"
+#include <ostream>
+#include <vector>
 
 #include "../Graphics/Text.h"
 #include "../Components/Slider.h"
+#include "../Components/Textfield.h"
 
 namespace ms
 {
@@ -60,8 +63,13 @@ namespace ms
 		UIElement::Type get_type() const override;
 
 		// Scripted-run response: -1 close, 0 no/prev, 1 yes/next/ok, or the
-		// selection index for SENDSIMPLE. Returns false if the type is unsupported.
+		// selection index for SENDSIMPLE; input dialogs accept close only here.
+        // Text/number/style values go through submit_input.
 		bool headless_respond(int32_t value);
+        bool submit_input(const std::string &value);
+        void configure_input(const std::string &initial, int32_t minimum, int32_t maximum,
+                             const std::vector<int32_t> &styles);
+        void write_input_state(std::ostream &out) const;
 
 		void change_text(int32_t npcid, int8_t msgtype, int16_t style, int8_t speaker, const std::string &text);
 
@@ -102,6 +110,11 @@ namespace ms
 
 		Text text;
 		Text name;
+        Textfield input;
+        Text input_hint;
+        int32_t input_min = 0, input_max = 0;
+        std::vector<int32_t> input_styles;
+        bool has_input() const { return raw_type == 2 || raw_type == 3 || raw_type == 7; }
 
 		int16_t height;
 		int16_t offset;

@@ -67,6 +67,8 @@ namespace ms
 		Text wepspeed_preview;
 		Text slots;
 		Text slots_preview;
+		std::string cached_metadata;
+		std::vector<Text> cash_metadata;
 		Text hammers;
 		Text hammers_preview;
 		Text atkinc;

@@ -43,6 +43,8 @@ namespace ms
 
 		void draw(Point<int16_t> position) const;
 
+		void set_horizontal_scroll(bool enabled);
+
 		void update(Point<int16_t> parentpos);
 
 		void send_key(KeyType::Id type, int32_t code, bool down);
@@ -74,6 +76,10 @@ namespace ms
 
 		bool belowlimit() const;
 
+		bool horizontal_scroll = false;
+		mutable std::string visible_source;
+		mutable size_t visible_marker = static_cast<size_t>(-1), visible_start = 0;
+		mutable Text visible_label;
 		Text textlabel;
 		std::string text;
 		Text marker;

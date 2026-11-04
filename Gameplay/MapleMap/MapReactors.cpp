@@ -33,10 +33,9 @@ namespace ms
 
 			int32_t oid = spawn.get_oid();
 
-			if (auto reactor = reactors.get(oid))
-				reactor->makeactive();
-			else
-				reactors.add(spawn.instantiate(physics));
+			// A new spawn resets state and destruction animation for reused IDs.
+			reactors.remove(oid);
+			reactors.add(spawn.instantiate(physics));
 		}
 
 		reactors.update(physics);

@@ -48,7 +48,15 @@ namespace ms
 			write_string(response);
 		}
 
-		NpcTalkMorePacket(int32_t selection) : NpcTalkMorePacket(4, 1)
+		enum class SelectionType : int8_t { NUMBER = 3, STYLE = 7 };
+
+        NpcTalkMorePacket(SelectionType type, int32_t selection) : NpcTalkMorePacket(static_cast<int8_t>(type), int8_t(1))
+        {
+            if (type == SelectionType::STYLE) write_byte(static_cast<int8_t>(selection));
+            else write_int(selection);
+        }
+
+        NpcTalkMorePacket(int32_t selection) : NpcTalkMorePacket(4, 1)
 		{
 			write_int(selection);
 		}

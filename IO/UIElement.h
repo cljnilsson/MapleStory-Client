@@ -71,6 +71,9 @@ namespace ms
 			QUIT,
 			CHARINFO,
 			CASHSHOP,
+			SOCIAL,
+			MARKET,
+			MTS,
 			NUM_TYPES
 		};
 

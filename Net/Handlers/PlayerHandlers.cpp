@@ -76,7 +76,8 @@ namespace ms
 		switch (stat)
 		{
 		case MapleStat::Id::SKIN:
-			player.change_look(stat, recv.read_short());
+			// v83 STAT_CHANGED encodes skin as one byte (same width as level).
+			player.change_look(stat, recv.read_byte());
 			break;
 		case MapleStat::Id::FACE:
 		case MapleStat::Id::HAIR:

@@ -15,6 +15,7 @@
 //	You should have received a copy of the GNU Affero General Public License	//
 //	along with this program.  If not, see <https://www.gnu.org/licenses/>.		//
 //////////////////////////////////////////////////////////////////////////////////
+#include "../IO/UITypes/UISocial.h"
 #include "PacketSwitch.h"
 
 #include "Handlers/AttackHandlers.h"
@@ -31,6 +32,8 @@
 #include "Handlers/SetFieldHandlers.h"
 #include "Handlers/TestingHandlers.h"
 #include "../HeadlessState.h"
+#include "../IO/UITypes/UIMarket.h"
+#include "../IO/UITypes/UIMTS.h"
 
 #include "../Configuration.h"
 
@@ -212,10 +215,55 @@ namespace ms
 		emplace<ADD_COOLDOWN, AddCooldownHandler>();
 
 		// Messaging handlers
+		emplace<0x6f, BroadcastHandler<0x6f>>();
+		emplace<0x70, BroadcastHandler<0x70>>();
+		emplace<0x8e, BroadcastHandler<0x8e>>();
+		emplace<0x10e, BroadcastHandler<0x10e>>();
+		emplace<0x10f, BroadcastHandler<0x10f>>();
+		emplace<0x110, BroadcastHandler<0x110>>();
+		emplace<0x155, BroadcastHandler<0x155>>();
+		emplace<0x156, BroadcastHandler<0x156>>();
+		emplace<0x157, BroadcastHandler<0x157>>();
 		emplace<SHOW_STATUS_INFO, ShowStatusInfoHandler>();
 		emplace<PLAYER_HINT, PlayerHintHandler>();
 		emplace<CHAT_RECEIVED, ChatReceivedHandler>();
+		emplace<0x5e, FamilyWindowPacket<0x5e>>();
+		emplace<0x5f, FamilyWindowPacket<0x5f>>();
+		emplace<0x60, FamilyWindowPacket<0x60>>();
+		emplace<0x61, FamilyWindowPacket<0x61>>();
+		emplace<0x62, FamilyWindowPacket<0x62>>();
+		emplace<0x63, FamilyWindowPacket<0x63>>();
+		emplace<0x64, FamilyWindowPacket<0x64>>();
+		emplace<0x65, FamilyWindowPacket<0x65>>();
+		emplace<0x66, FamilyWindowPacket<0x66>>();
+		emplace<0x68, FamilyWindowPacket<0x68>>();
+		emplace<0x3f, SocialWindowPacket<0x3f>>();
+		emplace<0x139, SocialWindowPacket<0x139>>();
+		emplace<0x29, SocialWindowPacket<0x29>>();
+		emplace<0x76, SocialWindowPacket<0x76>>();
+		emplace<0x4a, SocialWindowPacket<0x4a>>();
+		emplace<0x48, SocialWindowPacket<0x48>>();
+		emplace<0x49, SocialWindowPacket<0x49>>();
+		emplace<0x4b, SocialWindowPacket<0x4b>>();
+		emplace<0x140, SocialWindowPacket<0x140>>();
+		emplace<0x141, SocialWindowPacket<0x141>>();
+		emplace<0x7e, MTSPacket<0x7e>>();
+		emplace<0x15b, MTSPacket<0x15b>>();
+		emplace<0x15c, MTSPacket<0x15c>>();
+		emplace<0x86, SocialHandler<0x86>>();
+		emplace<0x87, SocialHandler<0x87>>();
+		emplace<0x88, SocialHandler<0x88>>();
 		emplace<SCROLL_RESULT, ScrollResultHandler>();
+		emplace<0x166, VegaSpellHandler>();
+		emplace<0x47, MarketOwlResultHandler>();
+		emplace<0x13a, MarketHandler>();
+		emplace<0xa5, MarketBoxHandler<0xa5>>();
+		emplace<0x109, MarketBoxHandler<0x109>>();
+		emplace<0x10a, MarketBoxHandler<0x10a>>();
+		emplace<0x10b, MarketBoxHandler<0x10b>>();
+		emplace<0x46, OwlSearchHandler>();
+		emplace<0x15d, MapleLifeResultHandler>();
+		emplace<0x15e, MapleLifeErrorHandler>();
 		emplace<SERVER_MESSAGE, ServerMessageHandler>();
 		emplace<WEEK_EVENT_MESSAGE, WeekEventMessageHandler>();
 		emplace<SHOW_ITEM_GAIN_INCHAT, ShowItemGainInChatHandler>();

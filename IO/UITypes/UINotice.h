@@ -117,16 +117,17 @@ namespace ms
 		int32_t max;
 	};
 
-	// One reset request; values remain server-owned until update packets arrive.
-	class UICashReset : public UINotice
+	// One cash-item request; values remain server-owned until update packets arrive.
+	class UICashItemDialog : public UINotice
 	{
 	public:
-		UICashReset(int16_t slot, int32_t item);
+		UICashItemDialog(int16_t slot, int32_t item);
 		void draw(float alpha) const override;
 		void update() override;
 		Cursor::State send_cursor(bool pressed, Point<int16_t> cursorpos) override;
 		void send_key(int32_t keycode, bool pressed, bool escape) override;
 		UIElement::Type get_type() const override { return TYPE; }
+		static bool supports(int32_t item);
 		static std::string request(int16_t slot, int32_t item, const std::string &values);
 		int16_t get_slot() const { return slot; }
 		int32_t get_item() const { return item; }
@@ -144,6 +145,41 @@ namespace ms
 		Text prompt;
 		Text confirm_label;
 		Text cancel_label;
+	};
+
+	// Paged server results, with a skin-independent readable layout.
+	class UICashResult : public UINotice
+	{
+	public:
+		UICashResult(std::string title, std::vector<std::string> rows, std::string kind);
+		void draw(float alpha) const override;
+		Cursor::State send_cursor(bool pressed, Point<int16_t> cursor) override;
+		void send_key(int32_t key, bool pressed, bool escape) override;
+		UIElement::Type get_type() const override { return TYPE; }
+	protected:
+		Button::State button_pressed(uint16_t id) override;
+	private:
+		void refresh();
+		std::string title, kind;
+		std::vector<std::string> rows;
+		size_t page = 0;
+		Text body, close_label, next_label, prev_label;
+	};
+	class UIVegaResult : public UINotice
+	{
+	public:
+		UIVegaResult();
+		void draw(float alpha) const override;
+		void update() override;
+		void send_key(int32_t key, bool pressed, bool escape) override;
+		UIElement::Type get_type() const override { return TYPE; }
+	protected:
+		Button::State button_pressed(uint16_t) override;
+	private:
+		Animation animation;
+		int phase = -1;
+		mutable int drawn_phase = -1;
+		Text status, close_label;
 	};
 
 	class UIOk : public UINotice

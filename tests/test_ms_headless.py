@@ -353,6 +353,29 @@ class ActionTransportTests(unittest.TestCase):
         self.assertFalse((self.state_dir / "act.txt").exists())
         self.assertNotIn("864209", (self.state_dir / "cancel.txt").read_text())
 
+    def test_npc_input_rejects_multiline_before_mailbox_dispatch(self):
+        with patch.object(ms_headless, "wait_for") as wait:
+            for value in ("first\nsecond", "first\rsecond", "first\0second"):
+                with self.subTest(value=value):
+                    result = ms_headless.dispatch_action({}, "npc-input", [value], 1)
+                    self.assertEqual(result["completion"], "not_dispatched")
+                    self.assertFalse(result["dispatch"]["ok"])
+                    self.assertFalse((self.state_dir / "act.txt").exists())
+                    self.assertFalse(list(self.state_dir.glob("*.tmp")))
+            wait.assert_not_called()
+
+    def test_npc_input_preserves_spaces_and_waits_for_client_validation(self):
+        def accepted(*_args, **_kwargs):
+            request = (self.state_dir / "act.txt").read_text()
+            self.assertEqual(request.split(" ", 2)[2], "  first last  \n")
+            return {"type": "act", "ok": True}
+
+        with patch.object(ms_headless, "wait_for", side_effect=accepted):
+            result = ms_headless.dispatch_action({}, "npc-input", ["  first last  "], 1)
+        self.assertTrue(result["dispatch"]["ok"])
+        self.assertEqual(result["completion"], "not_requested")
+        self.assertFalse((self.state_dir / "act.txt").exists())
+
     def test_action_separates_dispatch_from_observed_completion(self):
         observed = iter((
             {"type": "act", "id": "request", "ok": True},

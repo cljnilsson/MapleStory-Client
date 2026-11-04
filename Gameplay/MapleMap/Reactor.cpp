@@ -27,16 +27,14 @@ namespace ms
 	{
 		std::string strid = string_format::extend_id(rid, 7);
 		src = nl::nx::reactor[strid + ".img"];
+		// Linked bushes keep their own reactor ID for server scripting.
+		std::string link = src["info"]["link"];
+		if (!link.empty())
+			src = nl::nx::reactor[std::string(link.size() < 7 ? 7 - link.size() : 0, '0') + link + ".img"];
 
-		normal = src[0];
+		normal = src[state];
 		animation_ended = true;
 		dead = false;
-		hittable = false;
-
-		for (auto sub : src[0])
-			if (sub.name() == "event")
-				if (sub["0"]["type"].get_integer() == 0)
-					hittable = true;
 	}
 
 	void Reactor::draw(double viewx, double viewy, float alpha) const
@@ -50,7 +48,7 @@ namespace ms
 			normal.draw(absp - shift, alpha);
 		} else
 		{
-			animations.at(state - 1).draw(DrawArgument(absp - shift), 1.0);
+			transition.draw(DrawArgument(absp - shift), 1.0);
 		}
 	}
 
@@ -59,7 +57,9 @@ namespace ms
 		physics.move_object(phobj);
 
 		if (!animation_ended)
-			animation_ended = animations.at(state - 1).update();
+			animation_ended = transition.update();
+		else
+			normal.update();
 
 		if (animation_ended && dead)
 			deactivate();
@@ -69,27 +69,29 @@ namespace ms
 
 	void Reactor::set_state(int8_t state)
 	{
-		// TODO: hit/break sounds
-		if (hittable)
-		{
-			animations[this->state] = src[this->state]["hit"];
-			animation_ended = false;
-		}
-
+		// A transition belongs to the old state, even when the server skips states.
+		transition = src[this->state]["hit"];
+		animation_ended = !src[this->state]["hit"];
 		this->state = state;
+		normal = src[state];
 	}
 
 	void Reactor::destroy(int8_t, Point<int16_t>)
 	{
-		animations[this->state] = src[this->state]["hit"];
-		state++;
+		transition = src[state]["hit"];
+		animation_ended = !src[state]["hit"];
 		dead = true;
-		animation_ended = false;
+	}
+
+	int Reactor::get_event_type() const
+	{
+		auto event = src[state]["event"]["0"]["type"];
+		return event ? event.get_integer() : -1;
 	}
 
 	bool Reactor::is_hittable() const
 	{
-		return hittable;
+		return active && !dead && get_event_type() == 0;
 	}
 
 	bool Reactor::is_in_range(const Rectangle<int16_t> &range) const

@@ -15,7 +15,9 @@
 //	You should have received a copy of the GNU Affero General Public License	//
 //	along with this program.  If not, see <https://www.gnu.org/licenses/>.		//
 //////////////////////////////////////////////////////////////////////////////////
+#include "UITypes/UISocial.h"
 #include "UI.h"
+#include "../Net/Handlers/MessagingHandlers.h"
 
 #include "UIStateCashShop.h"
 #include "UIStateGame.h"
@@ -56,14 +58,15 @@ namespace ms
 
 	void UI::draw(float alpha) const
 	{
+		// Field broadcasts sit beneath interactive windows so notices cannot cover forms.
+		if (in_game) BroadcastState::get().draw(Stage::get().view_position(alpha));
 		state->draw(alpha, cursor.get_position());
-
 		scrollingnotice.draw(alpha);
 		if (hint_active)
 		{
-			auto pos = Point<int16_t>((Constants::Constants::get().get_viewwidth() - 400) / 2, 52);
+			auto pos = Point<int16_t>((Constants::Constants::get().get_viewwidth() - hint_width) / 2, 52);
 			hint_background.draw(pos);
-			hint_text.draw(pos + Point<int16_t>(200, 5));
+			hint_text.draw(pos + Point<int16_t>(8, 5));
 			if (!hint_rendered)
 			{
 				hint_rendered = true;
@@ -134,6 +137,8 @@ namespace ms
 		switch (id)
 		{
 		case State::LOGIN:
+			BroadcastState::get() = BroadcastState{};
+			SocialState::get() = SocialState{};
 			state = std::make_unique<UIStateLogin>();
 			break;
 		case State::GAME:
@@ -446,10 +451,21 @@ namespace ms
 	void UI::show_hint(const std::string &message, int16_t width, int16_t height)
 	{
 		width = std::max<int16_t>(120, std::min<int16_t>(width, Constants::Constants::get().get_viewwidth() - 20));
-		height = std::max<int16_t>(24, std::min<int16_t>(height, 120));
-		hint_text = Text(Text::Font::A12M, Text::Alignment::CENTER, Color::Name::WHITE, message,
-			static_cast<uint16_t>(width - 16));
-		hint_background = ColorBox(width, height, Color::Name::BLACK, 0.85f);
+        // The Text formatter uses escaped line breaks. Hints arrive with CRLF;
+        // render their content in white so #k text stays readable on this panel.
+        std::string readable;
+        for(size_t i=0;i<message.size();++i){
+            if(message[i]=='\r')continue;
+            if(message[i]=='\n'){readable+="\\n";continue;}
+            if(message[i]=='#' && i+1<message.size() && std::string("kenbrc").find(message[i+1])!=std::string::npos){++i;continue;}
+            readable+=message[i];
+        }
+        hint_width=width;
+        hint_text = Text(Text::Font::A12M, Text::Alignment::LEFT, Color::Name::WHITE, readable,
+            static_cast<uint16_t>(width - 16));
+        height=std::max<int16_t>(24,std::max<int16_t>(height,hint_text.height()+10));
+        height=std::min<int16_t>(height,Constants::Constants::get().get_viewheight()-72);
+        hint_background = ColorBox(width,height,Color::Name::BLACK,.96f);
 		hint_active = true;
 		hint_rendered = false;
 		hint_expires = std::chrono::steady_clock::now() + std::chrono::seconds(5);

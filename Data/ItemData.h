@@ -16,6 +16,7 @@
 //	along with this program.  If not, see <https://www.gnu.org/licenses/>.		//
 //////////////////////////////////////////////////////////////////////////////////
 #pragma once
+#include <map>
 
 #include "../Graphics/Texture.h"
 #include "../Template/BoolPair.h"
@@ -67,6 +68,9 @@ namespace ms
 		// Returns one of the item's icons. For each item there is a 'raw' icon and an icon with a drop shadow.
 		const Texture &get_icon(bool raw) const;
 
+		// Quest incubator metadata from Item.nx; the server validates feeding.
+		int quest_id = 0, quest_exp = 0, quest_grade = 0;
+		std::map<int32_t, int> quest_food;
 	private:
 		// Allow the cache to use the constructor
 		friend Cache<ItemData>;

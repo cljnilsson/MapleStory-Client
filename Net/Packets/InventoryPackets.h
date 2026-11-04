@@ -94,6 +94,64 @@ namespace ms
 		}
 	};
 
+	// v83 cash equipment bodies differ by family; no common leading timestamp.
+	class CashEquipmentPacket : public OutPacket
+	{
+	public:
+		CashEquipmentPacket(int16_t slot, int32_t item, int32_t type, int16_t target)
+			: OutPacket(OutPacket::Opcode::USE_CASH_ITEM)
+		{
+			write_short(slot); write_int(item);
+			if (item == 5060000) { write_short(target); write_time(); }
+			else if (item / 10000 == 557) { write_int(1); write_int(target); write_int(0); }
+			else { write_int(type); write_int(target); if (item / 10000 == 506) write_time(); }
+		}
+	};
+
+	// Cash broadcast body follows the original UseCashItemHandler family layout.
+	class CashBroadcastPacket : public OutPacket
+	{
+	public:
+		CashBroadcastPacket(int16_t slot, int32_t item, const std::vector<std::string> &lines, bool ear, int type, int target, const std::string &partner)
+			: OutPacket(Opcode::USE_CASH_ITEM)
+		{
+			write_short(slot); write_int(item);
+			int family = item / 10000, kind = (item / 1000) % 10;
+			if (family == 539) { for (const auto &line : lines) write_string(line); write_byte(ear); }
+			else if (family != 507 || kind == 1) write_string(lines[0]);
+			else if (kind == 2) { write_string(lines[0]); write_byte(ear); }
+			else if (kind == 6) { write_string(lines[0]); write_byte(ear); write_byte(type != 0); if (type) { write_int(type); write_int(target); } }
+			else if (kind == 7) { write_byte(lines.size()); for (const auto &line : lines) write_string(line); write_byte(ear); }
+			else if (kind == 5)
+			{
+				int tv = item % 10;
+				if (tv != 1) { if (tv >= 3) { if (tv == 3) write_byte(0); write_byte(ear); } else if (tv != 2) write_byte(0); if (tv != 4) write_string(partner == "-" ? "" : partner); }
+				for (const auto &line : lines) write_string(line); write_int(0);
+			}
+		}
+	};
+
+	class OwlSearchPacket : public OutPacket
+	{
+	public:
+		OwlSearchPacket(int16_t slot, int32_t item, int32_t searched) : OutPacket(Opcode::USE_CASH_ITEM)
+		{ write_short(slot); write_int(item); write_int(searched); }
+	};
+	class MapleLifePacket : public OutPacket
+	{
+	public:
+		MapleLifePacket(int16_t slot, int32_t item, const std::string &name, const std::vector<int32_t> &values)
+			: OutPacket(Opcode::USE_CASH_ITEM)
+		{ write_short(slot); write_int(item); write_string(name); for (int32_t value : values) write_int(value); }
+	};
+	class VegaSpellPacket : public OutPacket
+	{
+	public:
+		VegaSpellPacket(int16_t cash_slot, int32_t item, int16_t equip_slot, int16_t scroll_slot)
+			: OutPacket(Opcode::USE_CASH_ITEM)
+		{ write_short(cash_slot); write_int(item); write_int(1); write_int(equip_slot); write_int(2); write_int(scroll_slot); }
+	};
+
 	// v83 cash reset body has no timestamp; destination precedes source.
 	class CashResetPacket : public OutPacket
 	{

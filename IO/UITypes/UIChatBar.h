@@ -59,6 +59,8 @@ namespace ms
 
 		void send_chatline(const std::string &line, LineType type);
 
+		bool submit(const std::string &input);
+
 		void display_message(Messages::Type line, UIChatBar::LineType type);
 
 		void toggle_chat();

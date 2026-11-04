@@ -55,6 +55,12 @@ namespace ms
 		reset_layout();
 	}
 
+	void Text::change_maxwidth(uint16_t width)
+	{
+		maxwidth = width;
+		reset_layout();
+	}
+
 	void Text::change_color(Color::Name c)
 	{
 		if (color == c)

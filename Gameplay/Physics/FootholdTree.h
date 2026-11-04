@@ -42,11 +42,15 @@ namespace ms
 		// Determine the point on the ground below the specified position.
 		int16_t get_y_below(Point<int16_t> position) const;
 
+		int16_t ground_at(uint16_t id, int16_t x) const { return static_cast<int16_t>(get_fh(id).ground_below(x)); }
+
 		// Returns the leftmost and rightmost platform positions of the map.
 		Range<int16_t> get_walls() const;
 
 		// Returns the topmost and bottommost platform positions of the map.
 		Range<int16_t> get_borders() const;
+
+		const std::unordered_map<uint16_t, Foothold> &get_footholds() const { return footholds; }
 
 	private:
 		uint16_t get_fhid_below(double fx, double fy) const;

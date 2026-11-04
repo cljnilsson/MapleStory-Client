@@ -18,9 +18,50 @@
 #pragma once
 
 #include "../PacketHandler.h"
+#include <chrono>
+#include <string>
+#include <vector>
 
 namespace ms
 {
+	// Tracks received Vega stages; equipment remains owned by inventory packets.
+	struct VegaSpellState
+	{
+		static VegaSpellState &get();
+		bool pending = false, started = false, model_updated = false;
+		int32_t item = 0, equip_id = 0;
+		int16_t cash_slot = 0, equip_slot = 0, scroll_slot = 0;
+		int code = 0;
+		uint64_t draw_calls = 0;
+		bool asset = false;
+		std::chrono::steady_clock::time_point requested{};
+		int64_t elapsed_ms() const;
+	};
+	struct OwlSearchState
+	{
+		struct Row { std::string owner, description; int32_t map, bundles, quantity, price, owner_id; int channel, type; };
+		static OwlSearchState &get();
+		int32_t item = 0;
+		bool known = false;
+		std::vector<Row> rows;
+		uint64_t draw_calls = 0;
+	};
+	struct MapleLifeState
+	{
+		static MapleLifeState &get();
+		std::string name;
+		bool known = false;
+		int code = -1;
+		uint64_t draw_calls = 0;
+	};
+	class OwlSearchHandler : public PacketHandler { void handle(InPacket &) const override; };
+	class MapleLifeResultHandler : public PacketHandler { void handle(InPacket &) const override; };
+	class MapleLifeErrorHandler : public PacketHandler { void handle(InPacket &) const override; };
+	class VegaSpellHandler : public PacketHandler
+	{
+		void handle(InPacket &recv) const override;
+	};
+
 	// Handler for a packet which signifies that inventory items were gathered.
 	class GatherResultHandler : public PacketHandler
 	{

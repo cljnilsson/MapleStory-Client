@@ -18,26 +18,29 @@
 #pragma once
 
 #include <map>
+#include <string>
 
 namespace ms
 {
-	// Class that stores information on the quest log of an individual character
-	class QuestLog
-	{
-	public:
-		void add_started(int16_t, const std::string &quest_data);
+// Class that stores information on the quest log of an individual character
+class QuestLog
+{
+  public:
+	void add_started(int16_t, const std::string &quest_data);
 
-		void add_in_progress(int16_t, int16_t, const std::string &quest_data);
+	void add_in_progress(int16_t, int16_t, const std::string &quest_data);
 
-		void add_completed(int16_t, int64_t);
+	void add_completed(int16_t, int64_t);
 
-		bool is_started(int16_t);
+	bool is_started(int16_t);
 
-		int16_t get_last_started();
+	int16_t get_last_started();
+	std::string progress(int16_t qid) const;
+	void remove(int16_t qid);
 
-	private:
-		std::map<int16_t, std::string> started;
-		std::map<int16_t, std::pair<int16_t, std::string>> in_progress;
-		std::map<int16_t, int64_t> completed;
-	};
-}
+  private:
+	std::map<int16_t, std::string> started;
+	std::map<int16_t, std::pair<int16_t, std::string>> in_progress;
+	std::map<int16_t, int64_t> completed;
+};
+} // namespace ms

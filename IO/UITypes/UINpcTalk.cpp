@@ -27,6 +27,9 @@
 #include "../../HeadlessState.h"
 
 #include <nlnx/nx.hpp>
+#include <charconv>
+#include "../../Graphics/Geometry.h"
+#include "../Components/AreaButton.h"
 
 namespace ms
 {
@@ -82,7 +85,19 @@ namespace ms
 
 	void UINpcTalk::draw(float inter) const
 	{
-		Point<int16_t> drawpos = position;
+		if (has_input()) {
+            ColorBox(520, 320, Color::Name::BLACK, 0.96f).draw(position);
+            text.draw(position + Point<int16_t>(20, 20), Range<int16_t>(position.y() + 20, position.y() + 198));
+            input_hint.draw(position + Point<int16_t>(20, 208));
+            ColorBox(475, 23, Color::Name::WHITE, 1).draw(position + Point<int16_t>(20, 235));
+            input.draw(position);
+            ColorBox(100, 24, Color::Name::WHITE, 1).draw(position + Point<int16_t>(20, 278));
+            ColorBox(100, 24, Color::Name::WHITE, 1).draw(position + Point<int16_t>(395, 278));
+            Text(Text::A11M, Text::LEFT, Color::Name::BLACK, "Cancel").draw(position + Point<int16_t>(25, 282));
+            Text(Text::A11M, Text::LEFT, Color::Name::BLACK, "Submit").draw(position + Point<int16_t>(400, 282));
+            return;
+        }
+        Point<int16_t> drawpos = position;
 		top.draw(drawpos);
 		drawpos.shift_y(top.height());
 		fill.draw(DrawArgument(drawpos, Point<int16_t>(0, height)));
@@ -111,11 +126,12 @@ namespace ms
 			int16_t y_adj = height - min_height;
 			text.draw(position + Point<int16_t>(166, 48 - y_adj));
 		}
-	}
+    }
 
-	void UINpcTalk::update()
+    void UINpcTalk::update()
 	{
 		UIElement::update();
+        if (has_input()) input.update(position);
 
 		if (draw_text)
 		{
@@ -143,6 +159,11 @@ namespace ms
 
 	Button::State UINpcTalk::button_pressed(uint16_t buttonid)
 	{
+        if (has_input()) {
+            if (buttonid == Buttons::CLOSE) headless_respond(-1);
+            else if (buttonid == Buttons::OK) submit_input(input.get_text());
+            return Button::State::NORMAL;
+        }
 		deactivate();
 		HeadlessState::clear_dialog();
 
@@ -243,7 +264,11 @@ namespace ms
 
 	Cursor::State UINpcTalk::send_cursor(bool clicked, Point<int16_t> cursorpos)
 	{
-		Point<int16_t> cursor_relative = cursorpos - position;
+		if (has_input()) {
+            auto state = input.send_cursor(cursorpos, clicked);
+            if (state != Cursor::State::IDLE) return state;
+        }
+        Point<int16_t> cursor_relative = cursorpos - position;
 
 		if (show_slider && slider.isenabled())
 			if (Cursor::State sstate = slider.send_cursor(cursor_relative, clicked))
@@ -267,12 +292,18 @@ namespace ms
 			deactivate();
 			HeadlessState::clear_dialog();
 
-			NpcTalkMorePacket(type, 0).dispatch();
+			headless_respond(-1);
 		}
 	}
 
 	bool UINpcTalk::headless_respond(int32_t value)
 	{
+        if (has_input()) {
+            if (value != -1) return false;
+            NpcTalkMorePacket(raw_type, int8_t(0)).dispatch();
+            input.set_state(Textfield::DISABLED);
+            deactivate(); HeadlessState::clear_dialog(); return true;
+        }
 		// Dispatch on the server's raw message type: the TalkType enum above is
 		// numbered differently (its SENDSIMPLE is 7, the server's menu is 4).
 		switch (raw_type)
@@ -296,6 +327,66 @@ namespace ms
 		HeadlessState::clear_dialog();
 		return true;
 	}
+
+    void UINpcTalk::configure_input(const std::string &initial, int32_t minimum,
+                                    int32_t maximum, const std::vector<int32_t> &styles) {
+        input_min = minimum; input_max = raw_type == 7 ? int32_t(styles.size()) - 1 : maximum; input_styles = styles;
+        position = Point<int16_t>(140, 120); dimension = Point<int16_t>(520, 320);
+        draw_text = false;
+        std::string body = formatted_text;
+        if (raw_type == 7) {
+            body += "\nStyle index / asset ID (no preview):";
+            for (size_t i = 0; i < styles.size() && i < 12; ++i)
+                body += " " + std::to_string(i) + ":" + std::to_string(styles[i]);
+            if (styles.size() > 12) body += " ...";
+        }
+        text = Text(Text::A12M, Text::LEFT, Color::Name::WHITE, body, 475);
+        input = Textfield(Text::A12M, Text::LEFT, Color::Name::DARKGREY,
+            Rectangle<int16_t>(Point<int16_t>(20, 235), Point<int16_t>(495, 258)), raw_type == 2 ? 255 : 11);
+        input.set_horizontal_scroll(true);
+        input.change_text(initial);
+        input.set_enter_callback([this](std::string value) { submit_input(value); });
+        input.set_state(Textfield::FOCUSED);
+        input_hint = Text(Text::A11M, Text::LEFT, Color::Name::WHITE,
+            raw_type == 2 ? "Text (Enter submits)" : raw_type == 3
+            ? "Number: " + std::to_string(minimum) + " to " + std::to_string(maximum)
+            : "Style index: 0 to " + std::to_string(int(styles.size()) - 1));
+        buttons.clear();
+        buttons[Buttons::OK] = std::make_unique<AreaButton>(Point<int16_t>(395, 278), Point<int16_t>(100, 24));
+        buttons[Buttons::CLOSE] = std::make_unique<AreaButton>(Point<int16_t>(20, 278), Point<int16_t>(100, 24));
+    }
+
+    bool UINpcTalk::submit_input(const std::string &value) {
+        if (!is_active() || !has_input()) return false;
+        auto invalid = [this]() {
+            input_hint.change_text(raw_type == 2 ? "Use at most 255 characters on one line."
+                : "Enter a whole number from " + std::to_string(input_min) + " to " + std::to_string(input_max) + ".");
+            return false;
+        };
+        if (raw_type == 2) {
+            if (value.size() > 255 || value.find_first_of("\r\n") != std::string::npos || value.find('\0') != std::string::npos) return invalid();
+            NpcTalkMorePacket(value).dispatch();
+        } else {
+            int32_t number = 0;
+            auto parsed = std::from_chars(value.data(), value.data() + value.size(), number);
+            if (parsed.ec != std::errc() || parsed.ptr != value.data() + value.size()) return invalid();
+            if (raw_type == 3 ? number < input_min || number > input_max
+                             : number < 0 || size_t(number) >= input_styles.size()) return invalid();
+            NpcTalkMorePacket(raw_type == 3 ? NpcTalkMorePacket::SelectionType::NUMBER : NpcTalkMorePacket::SelectionType::STYLE, number).dispatch();
+        }
+        input.set_state(Textfield::DISABLED);
+        deactivate(); HeadlessState::clear_dialog(); return true;
+    }
+
+    void UINpcTalk::write_input_state(std::ostream &out) const {
+        if (!has_input()) return;
+        out << ",\"input\":{\"kind\":\"" << (raw_type == 2 ? "text" : raw_type == 3 ? "number" : "style")
+            << "\",\"minimum\":" << input_min << ",\"maximum\":" << input_max
+            << ",\"text_limit\":255,\"styles\":[";
+        for (size_t i = 0; i < input_styles.size(); ++i) out << (i ? "," : "") << input_styles[i];
+        out << "],\"field\":{\"x\":" << position.x() + 25 << ",\"y\":" << position.y() + 245
+            << "},\"submit\":{\"x\":" << position.x() + 405 << ",\"y\":" << position.y() + 290 << "},\"cancel\":{\"x\":" << position.x() + 30 << ",\"y\":" << position.y() + 290 << "}}";
+    }
 
 	UIElement::Type UINpcTalk::get_type() const
 	{

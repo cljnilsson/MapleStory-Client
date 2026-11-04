@@ -32,4 +32,34 @@ namespace ms
 			write_byte(show);
 		}
 	};
+
+	class WhisperPacket : public OutPacket
+	{
+	public:
+		WhisperPacket(const std::string &target, const std::string &text, bool find = false) : OutPacket(0x78)
+		{
+			write_byte(find ? 5 : 6);
+			write_string(target);
+			if (!find) write_string(text);
+		}
+	};
+	class GroupChatPacket : public OutPacket
+	{
+	public:
+		GroupChatPacket(int mode, const std::vector<int32_t> &recipients, const std::string &text) : OutPacket(0x77)
+		{
+			write_byte(mode);
+			write_byte(recipients.size());
+			for (auto id : recipients) write_int(id);
+			write_string(text);
+		}
+	};
+	class SpouseChatPacket : public OutPacket
+	{
+	public:
+		explicit SpouseChatPacket(const std::string &text) : OutPacket(0x79)
+		{
+			write_string(""); write_string(text);
+		}
+	};
 }

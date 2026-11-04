@@ -109,7 +109,12 @@ namespace ms
 		// Notify the server that the player has moved maps
 		void transfer_player();
 
+		const FootholdTree &get_footholds() const { return physics.get_fht(); }
+		const std::vector<Ladder> &get_ladders() const { return mapinfo.get_ladders(); }
+
 		bool request_pickup();
+		Point<int16_t> view_position(float alpha) const { return camera.position(alpha); }
+		int16_t foothold_y(uint16_t id, int16_t x) const { return physics.get_fht().ground_at(id, x); }
 
 	private:
 		void load_map(int32_t mapid);

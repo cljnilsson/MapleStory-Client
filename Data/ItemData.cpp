@@ -67,6 +67,15 @@ namespace ms
 
 		if (src)
 		{
+			quest_id = src["questId"];
+			quest_exp = src["exp"];
+			quest_grade = src["grade"];
+			for (auto food : src["consumeItem"])
+			{
+				int id = food["0"];
+				int gain = food["1"];
+				if (id > 0) quest_food[id] = gain;
+			}
 			icons[false] = src["icon"];
 			icons[true] = src["iconRaw"];
 			price = src["price"];

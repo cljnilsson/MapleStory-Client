@@ -1,3 +1,5 @@
+#include "../IO/UITypes/UIMarket.h"
+#include "../Graphics/Geometry.h"
 //////////////////////////////////////////////////////////////////////////////////
 //	This file is part of the continued Journey MMORPG client					//
 //	Copyright (C) 2015-2019  Daniel Allendorf, Ryan Payton						//
@@ -16,6 +18,8 @@
 //	along with this program.  If not, see <https://www.gnu.org/licenses/>.		//
 //////////////////////////////////////////////////////////////////////////////////
 #include "Stage.h"
+#include "../Net/Handlers/MessagingHandlers.h"
+#include "../Net/Handlers/InventoryHandlers.h"
 #include "../HeadlessState.h"
 
 #include "../Configuration.h"
@@ -72,6 +76,8 @@ namespace ms
 
 	void Stage::clear()
 	{
+		VegaSpellState::get() = VegaSpellState{};
+		BroadcastState::get().clear_field();
 		state = State::INACTIVE;
 
 		combat.reset_field();
@@ -133,6 +139,11 @@ namespace ms
 			drops.draw(id, viewx, viewy, alpha);
 		}
 
+		for(auto &entry:MarketState::get().boxes)
+            if(entry.second.type==5){auto point=entry.second.position+viewpos-Point<int16_t>(0,70);
+                ColorBox(190,40,Color::Name::BLACK,0.9f).draw(point-Point<int16_t>(95,4));
+                entry.second.label.draw(point);
+            }
 		combat.draw(viewx, viewy, alpha);
 		portals.draw(viewpos, alpha);
 		backgrounds.drawforegrounds(viewx, viewy, alpha);
@@ -154,6 +165,12 @@ namespace ms
 		mobs.update(physics);
 		chars.update(physics);
 		drops.update(physics);
+		BroadcastState::get().update();
+		// A hanging rope may enter reach after Up was pressed. Check the
+		// held input while airborne instead of depending on OS key repeats.
+		if (playable && player.get_stats().get_stat(MapleStat::Id::HP) > 0
+			&& !player.get_phobj().onground && player.is_key_down(KeyAction::Id::UP))
+			check_ladders(true);
 		player.update(physics);
 
 		portals.update(player.get_position());

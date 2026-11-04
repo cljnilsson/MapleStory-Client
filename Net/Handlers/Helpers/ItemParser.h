@@ -25,6 +25,9 @@ namespace ms
 {
 	namespace ItemParser
 	{
+		void add_equip(InPacket&, InventoryType::Id, int16_t, int32_t, Inventory&);
+		void add_item(InPacket&, InventoryType::Id, int16_t, int32_t, Inventory&);
+		void add_pet(InPacket&, InventoryType::Id, int16_t, int32_t, Inventory&);
 		void parse_item(InPacket& recv, InventoryType::Id invtype, int16_t slot, Inventory& inventory);
 	}
 }

@@ -50,6 +50,8 @@ namespace ms
 		bool felloff(int16_t y, bool downwards) const;
 
 		int16_t get_x() const;
+		int16_t get_y1() const { return y1; }
+		int16_t get_y2() const { return y2; }
 
 	private:
 		int16_t x;
@@ -78,6 +80,7 @@ namespace ms
 		// Find a ladder at the player's position
 		// !upwards - implies downwards
 		Optional<const Ladder> findladder(Point<int16_t> position, bool upwards) const;
+		const std::vector<Ladder> &get_ladders() const { return ladders; }
 
 	private:
 		int32_t fieldlimit;

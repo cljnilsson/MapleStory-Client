@@ -518,7 +518,7 @@ Snapshots now include base `player.str`, `dex`, `int`, and `luk`.
 
 Muted fan observations verified STR→DEX and Power Strike→Slash Blast with
 one item consumed each. The dialog continuation below adds native and MP→HP
-coverage; other M166 item families remain open, so M166 is not complete.
+coverage; the completion entry below records the remaining M166 families.
 
 
 M166 reset dialog continuation: double-click an AP/SP reset in the Cash inventory,
@@ -533,4 +533,269 @@ otherwise null. The server may refuse a dispatched request, including its
 three-second cash-use cooldown; observe the notice and received state.
 Muted checks observed button-based AP and SP changes/consumption, MP→HP pool
 changes, cancellation, local validation and explicit minimum-INT/cooldown refusal.
-These are fan-only X? observations. Other M166 item families remain open.
+These are fan-only X? observations. See the completion entry below.
+
+
+M166 equipment controls: double-click a supported Cash item, or use
+`act cash-item-open <cash-slot>`. Enter `equip <positive-bag-slot>` or
+`equipped <negative-wire-slot>`, then Confirm/Return; Cancel/Escape sends nothing.
+`act cash-item-use <cash-slot> equip|equipped <target-slot>` uses the same validator.
+Supported: Item Tag5060000, locks5060001/5061000–5061003, Karma552 and Hammer557.
+Tag requires equipped equipment; Hammer requires bag equipment below two uses.
+Resealing and repeated Karma are refused locally. Server eligibility and its
+three-second cooldown still apply. No target or stack is changed optimistically.
+The existing `reset_dialog` snapshot key also describes these shared cash dialogs.
+Tooltips display received owner, seal, Karma, expiry and Hammer/upgrade data;
+missing tooltip skins use readable fallback panels. Slot/metadata caching refreshes
+labels after server updates. Muted fan evidence covers tag/seal/Karma/Hammer,
+consumption and refusal (`X?`); Vega/Owl/Maple Life are covered below.
+
+
+M166 complete (fan evidence only). The shared Cash double-click/`cash-item-open`
+panel and `cash-item-use` support these additional inputs:
+
+- Vega5610000/5610001: `<equip-slot> <use-scroll-slot>` (both1–127). The scroll
+  must match the equipment category and the spell's10%/60% variant. Example:
+  `act cash-item-use 26 1 11`. Immediate consumption and delayed equipment updates
+  remain separate. `vega` snapshots and `vega_packet/model/draw` events record the
+  stages. An asset-backed progress/result panel waits for the matching equipment
+  packet before presenting success/failure. Close hides the panel and does not
+  cancel the server operation. An unanswered request blocks another cash use for
+  ten seconds; timeout alone never marks a result successful.
+- Owl5230000: `<searched-item-id>`, e.g. `act cash-item-use 27 2000000`.
+  Received rows expose owner, description, map/channel, bundles, quantity and
+  price in `owl`. Native results page four rows at a time (Next/Previous, Return
+  advances, Escape closes). Equipment payloads decode into temporary inventories.
+  Empty searches leave the Owl unconsumed. Shop warp is later milestone scope.
+- Maple Life5431000/5432000: `<name> <face> <hair> <hair-color> <skin> <gender>
+  <job-choice> <improve-SP>`, e.g.
+  `act cash-item-use 28 LifeTest 20000 30000 0 0 0 0 0`.
+  Job choices0–4 are warrior/magician/bowman/thief/pirate; genders0/1. The server
+  owns creation, slot limits and consumption. Native response panels and
+  `maple_life` snapshots report acknowledgement/refusal. Reconnect to observe the
+  actual new character on the list. Card5432000's additional-slot side effect is
+  server-owned; the live gate used5431000.
+
+Muted fan checks passed Vega's delayed model/result animation, wrong-scroll
+refusal, Owl open/closed/empty/equipment results plus consumption, and Maple Life
+name refusal/creation/consumption/list/level30 field entry. These are `X?`, not
+original-client compatibility claims. M166's detailed evidence is in porting history.
+
+M167 broadcasts and timed effects use the shared Cash double-click or
+`act cash-item-open <cash-slot>` panel. `act cash-item-use <cash-slot> <input>`
+uses exactly the same validation and packet builder. Inputs:
+
+- Ordinary megaphone5071, kite508 and weather512: the message.
+- Super megaphone5072: `<ear> <message>` (ear0/1 disables/enables the whisper ear).
+- Item megaphone5076: `<ear> <inventory-type> <slot> <message>`. Types1–5 are
+  Equip/Use/Setup/Etc/Cash; `0 0` means no linked item. Bag slots are1–127.
+- Triple megaphone5077: `<ear> <line1>|<line2>|<line3>` (one to three lines).
+- Avatar539: `<ear> <line1>|<line2>|<line3>|<line4>`.
+- Maple TV5075000–5075005: `<ear> <partner-name-or-> <five lines separated by |>`.
+  Some source variants ignore the partner/ear; the packet body follows the
+  original handler for each variant. Example: `0 - Hello|Maple|TV|from|me`.
+
+Use1–80 characters per line. The server owns level restrictions, cooldowns,
+consumption, TV exclusivity and removal. Dispatch alone is not success.
+Broadcast panels show received text, channel/linked item and character portraits;
+these are readable fan presentations, not reproductions of the original skins.
+Kites are anchored to received x/foothold and use the available item animation.
+Weather resolves the Cash item's Map asset path and displays moving particles
+plus its received message; absent assets retain the readable message panel.
+
+`broadcasts` snapshots contain up to20 notices and100 kite records, plus avatar,
+TV and weather state: owner/message/identity, channel/ear, position/foothold,
+portrait and asset presence/path, actual panel draw calls, age and removal time.
+TV/avatar/weather/kite visibility follows server removal packets; age alone
+never claims their expiry. Ordinary notice overlays last10 seconds locally and
+also enter the chat log. Field changes clear map-specific weather/kites; logout
+clears all broadcast state. Cached text rows keep layout work out of each frame.
+
+
+M168 social controls: native chat accepts `/whisper NAME TEXT`, `/find NAME`,
+`/buddy NAME TEXT`, `/party TEXT`, `/guild TEXT`, `/alliance TEXT`, and `/spouse
+TEXT`. Plain text and GM commands retain general chat. `/helpchat` (or the help
+button) lists controls. Bodies are limited to127 characters; the input scrolls
+horizontally and rejects oversized requests locally.
+
+Open the social window with `/social` or the chat target button. Its Buddies,
+Messenger and Notes tabs have native buttons, recipient and message fields.
+- Buddies: add by name, accept/deny invitations, click a received contact,
+  send to that contact, or remove it. Previous/Next pages the contact list.
+- Messenger: Create, enter a name and Invite; recipients Accept or Deny.
+  Received members/portraits and text appear in the window. Send or press Enter
+  in the message field; Leave exits the room. Closing the window hides it without
+  leaving. `/messenger` reopens it. Offline and denial replies are received state.
+- Notes: `/notes` opens received notes and composition. Previous/Next selects an
+  individual received note, even when senders repeat. Discard sends that note's
+  identity and hides it locally. Sending needs a ticket from receiving a cash
+  gift. The server sends no note-delivery acknowledgement; the panel says
+  requested, and the recipient receives stored notes on login. Escape closes
+  the panel, including when a text field has focus.
+
+`act chat-send '<text or command>'` uses the native chat parser.
+`act social-open 'buddy|messenger|notes'` opens the actual social window.
+`act social-action '<action> <name-or-> <text>'` uses that window's submission
+path. Actions: buddy-add/accept/deny/remove/send, messenger-create/invite/accept/
+deny/send/leave, note-send/discard. Use `-` where a name is unnecessary. Discard
+uses the currently displayed received note, never a supplied raw ID.
+
+The bounded `social` snapshot exports received buddies, members, notes, latest64
+Messenger lines, pending invitation names, request/result status, active tab and
+actual draw count. `chat`/`social` events expose received text/outcomes. A dispatch
+result confirms a request, not delivery. Logout clears social state.
+
+M168's muted fan checks cover cross-channel whisper/find and all five private
+chat families, buddy native add/deny/accept/select/send, Messenger native create/
+invite/deny/accept/chat/leave/offline, and gift-ticket note send/login receipt/
+read/discard/paging. An unrelated active observer received subsequent public text
+without private messages. These are fan observations (X?), not original-client
+compatibility or original skin fidelity. See the root plan/history for evidence.
+
+
+M169 adds `/partyui` (or `act social-open party`). Click a received roster name
+before **Kick** or **Leader**. **Accept/Deny** answers the current received
+invitation, including Party Search invitations. Enter `1 31` in the Message field
+and click **Search** to search levels 1–31 across all jobs; **Stop search** sends
+the stop request. The range must include your level and span at most 30 levels.
+Search has no server acknowledgement, so the status explicitly says requested.
+
+Semantic controls use the same request path: `party-deny`, `party-kick NAME`,
+`party-leader NAME`, `party-search-start '1 31'`, `party-search-stop` (and the
+existing create/leave/invite/accept). `social-action 'party-search-start - 1 31'`
+requires the actual social window. The social window snapshot includes button
+labels/positions, selected target and input options, alongside received party and
+invitation state. Leadership transfer currently requires an online member.
+M169 Family, guide and quest-incubator controls are described below.
+
+### Family, guide and quest incubators (M169)
+
+`/family` opens the Family tab; Refresh requests current reputation and daily
+privilege use. Pedigree requests the named character's received family tree
+(blank target means yourself). Click a received member name before Summon or
+Reunite. Family invitation and summon packets open this tab with Accept/Deny or
+Summon yes/no controls. Summon and Reunite use the server's reputation costs;
+other Family privilege effects remain unimplemented on the server.
+
+`/guide` or `/incubator` opens the Guide tab. Guide dialog requests the ordinary
+server-selected NPC script. Choose item cycles quest incubators in the received
+ETC inventory; Choose food cycles compatible inventory stacks using Item.nx
+metadata. Feed one sends the M114 quest-feed request. The panel displays actual
+received quest progress and inventory counts; it does not grant rewards locally.
+This is separate from the Cash item called Incubator.
+
+The existing `social-open` action accepts `family` and `guide`. With the real
+window open, `social-action` supports `family-open`, `family-pedigree NAME`,
+`family-invite NAME`, `family-accept`, `family-deny`, `family-summon NAME`,
+`family-reunite NAME`, `family-summon-accept`, `family-summon-deny`, `guide-open`,
+`incubator-next`, `incubator-food`, and `incubator-feed`. For actions without a
+name use `-`, for example `social-action 'family-open -'`. Snapshots export
+received Family/privilege/pedigree/invitation state, incubator selection and
+progress, and actual window rows, named choices and button coordinates.
+
+### Player shops and hired merchants
+
+`/market` (or `act market-open`) opens the market window. Fill its argument field,
+then click an action. Successful native requests clear the field. The directory,
+listings, visitors, chat, sale results and wallet come from server packets.
+The window exports its actual text and button positions under `market`.
+
+- Create: `permitID description`, using a received Cash store permit or merchant.
+- Stock: `inventory slot bundles quantity price` (inventory 1=Equip, 2=Use,
+  3=Setup, 4=ETC). Open lists the stock; Take uses a listing index before opening.
+- Visit: an owner ID from the received directory. Buy: `listingIndex bundles`.
+  Chat takes a message; Ban takes a received visitor name (player-shop owner).
+- Owl: an index from received Owl search results; sends the ordinary shop warp.
+- Leave exits the room. Close shuts the owner's store; Withdraw, Organize and
+  Resume are hired-merchant owner controls. These actions take no arguments.
+- Previous/Next page received rows; Hide closes only the panel.
+
+The same controls are available as `act market-action 'action arguments'`.
+Requests are reported as dispatched, not confirmed transactions. Server inventory,
+meso, room and box responses establish outcomes. Leaving locally closes the room
+view because the protocol does not acknowledge every voluntary exit. Login and
+field transitions clear market state. Field shops use readable description boxes;
+the fan UI does not claim the original client's shop artwork.
+
+M171 service controls (fan presentation): `/newyear` opens the social card panel;
+enter a recipient/message and Send using a received Use card2160101. Previous/Next
+select server records or delivery notices; Receive claims only the selected
+unreceived card. Login records are retained; no card receipt is predicted.
+`act social-open newyear` and `act social-action 'newyear-send Name message'` /
+`'newyear-receive -'` use the same request path. Card messages are limited to127
+characters and login records to1024.
+
+`/mts` or `act mts-enter` requests real MTS entry (server must enable USE_MTS,
+level/map/event restrictions apply). The received window supports Browse, Cart,
+clicking a received listing, Add/Remove, server page navigation and Exit/Escape
+through the actual return-to-field request. `act mts-action 'add 0'` uses a
+zero-based received row index; `browse`, `cart`, `remove 0`, `next`, `previous`,
+`exit` share native handlers. Snapshot `mts` exports received balances/listings,
+actual button positions and listing selectors. Native cart display currently
+shows the first16 rows; selling/purchasing/transfer controls are unsupported.
+This is a functional browse/cart interface, not the original MTS artwork.
+
+Wedding gift results open the social registry from the server's NPC/script path.
+Previous/Next selects a received gift; Claim gift requests its authoritative
+registry index and waits for inventory/list refresh. Close requests wedding
+window closure. `act social-action 'wedding-claim -'` shares that path. Wedding
+controls are available through `/wedding` or `act social-open marriage`. Propose
+uses the first received Use ring box2240000–2240015 and the entered partner name;
+Accept/Decline answer only a received proposal, and Cancel proposal cancels the
+sender's pending request. Replies preserve the entered name. Engagement records
+and names are retained from full login as well as live results.
+
+Invite guest uses the received engagement record and first Etc invitation
+envelope4031377/4031395; enter a guest name, then wait for server consumption or
+refusal. Invitation opens the first received guest ticket4031406/4031407 and shows
+the server's couple names; attending still uses the copied Wedding Assistant.
+The real assistant script can request a wishlist: enter up to ten names separated
+by `|` (each1–100 characters, combined1009), then Send wishlist. This submits without
+inventing an acknowledgement; read the result through the copied Gift Registry.
+
+Ceremony packets open a readable gathering/altar/vows/end panel; Bless couple
+sends the real wedding-talk request. End packets with visible character IDs play
+the real `Effect/BasicEff.img/Wedding` animation on those characters. Close/Escape
+closes the presentation; it does not exit the event. Shared semantic actions are
+`act social-action 'wedding-propose Name'`, `'wedding-accept -'`,
+`'wedding-deny -'`, `'wedding-cancel -'`, `'wedding-invite Name'`,
+`'wedding-invitation -'`, `'wedding-wishlist - Shell|Potion'` and
+`'wedding-bless -'`. Snapshot `social.wedding` exports received records, wishlist,
+ceremony state and effect dispatch counts; native rows/buttons/coordinates are in
+`social.window`. A dispatch count alone is not proof of visible rendering.
+
+Wedding photo presentation remains unavailable: upstream `Wedding.OnTakePhoto`
+labels its packet v53 and explicitly leaves WvsMapGen work unfinished; the port
+has no emitter. No v83 packet format or successful photo is invented. The fan
+panels also do not reproduce original wedding artwork or certify a full ceremony
+route.
+
+`@rates` / `@showrates` retain server text in `social.rates_hint`. Hints normalize
+CRLF and use measured backgrounds, centered to their actual width, with readable
+white text. Coupon state comes from the received rate hint and Cash inventory;
+no coupon buff icon or client-computed multiplier is invented.
+
+
+NPC input dialogs now decode v83 text defaults (type2), numeric defaults/bounds
+(type3), and style IDs (type7). Their native panel supports keyboard entry,
+Enter/Submit, and Cancel/Escape. `act npc-input <value>` uses the same validator;
+`act npc-choose close` cancels. Text is limited to255 bytes on one line, numeric
+answers must fit the received inclusive range, and style replies are zero-based
+indices into received IDs. Invalid input keeps the dialog open. Style IDs are
+listed without cosmetic previews; this does not certify original client artwork.
+`npc_dialog.input` exports input kind, bounds, styles and field/Submit/Cancel
+coordinates. Submission closes the local dialog while awaiting the real server
+reply; it does not invent a reward or successful script result.
+
+M172 remains open for complete PQ and expedition routes, including invalid entry
+and disconnect recovery. NPC dialog fixture checks alone do not close a route.
+
+PQ controls: `act jump down` uses the normal Down + Jump movement path and refuses unsupported footholds. `act jump up` taps Jump while holding Up for one second to catch a hanging rope through normal collision checks; the result reports input release, so check `player.climbing` and position separately. `act jump left` / `act jump right` hold the direction for one second and tap Jump after a 150 ms run-up; they require a grounded player who is not attacking. Start with room to accelerate before a ledge. The result reports input release, not a successful landing. Active moves must finish before a jump. Direction holds and pending jump taps are canceled on cancellation, death or field changes. Native held Up also checks for ropes while airborne, without relying on OS key repeats. Reactor snapshots include current asset `event_type` and `hittable`; linked reactor assets retain their original script IDs. These observations do not certify a complete PQ route.
+
+`act map-geometry` exports the active field's loaded collision data once in
+`dispatch.geometry`: map ID, field-entry sequence, sorted footholds (ID, layer,
+previous/next IDs and both endpoints), and climbables (ladder/rope flag, x and
+y endpoints). It refuses arguments and requests outside a field. This is asset
+geometry, not a route solver or a claim that every span is reachable. Match its
+map and field-entry sequence to the current snapshot before reusing a result.
+Geometry is omitted from recurring snapshots to avoid repeated large exports.

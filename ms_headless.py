@@ -439,6 +439,12 @@ def dispatch_action(state: dict, action: str, argv: list[str], timeout: float,
     since = last_seq()
     act_id = f"a{uuid.uuid4().hex}"
     arg = " ".join(argv)
+    # The mailbox is line-oriented: reject before a multiline answer can be
+    # silently truncated into a different, valid NPC reply.
+    if action == "npc-input" and any(c in arg for c in "\r\n\0"):
+        return {"dispatch": {"act": action, "ok": False,
+                             "error": "NPC input must be one line without NUL bytes"},
+                "completion": "not_dispatched"}
     if action == "move" and len(argv) == 2:
         timeout = max(timeout, int(argv[1]) / 1000 + 5)
     tmp = STATE_DIR / f"act.{act_id}.tmp"
@@ -484,9 +490,9 @@ def cmd_batch(args) -> None:
         die("batch input must be a JSON array of action arrays")
     if not isinstance(actions, list) or not 1 <= len(actions) <= 10:
         die("batch must contain between 1 and 10 actions")
-    allowed = {"observe", "login-notice", "pic-cancel", "world-choose", "channel-choose", "channel-change", "logout", "character-choose", "character-enter", "character-back", "character-delete", "view-all", "npc-talk", "npc-choose", "pickup", "sit", "stand", "chair", "item-move", "item-drop", "item-split", "cash-enter", "cash-exit", "cash-buy", "cash-gift", "cash-retrieve", "cash-coupon", "cash-name-rules", "cash-world-rules", "skill-use", "skill-down", "skill-up", "skill-cancel", "skill-learn", "skill-assign", "buff-cancel", "reset-open", "ap-reset", "sp-reset", "scripted-item", "use-item", "equip", "unequip", "window",
+    allowed = {"mts-enter", "mts-action", "chat-send", "market-open", "market-action", "social-open", "social-action", "observe", "login-notice", "pic-cancel", "world-choose", "channel-choose", "channel-change", "logout", "character-choose", "character-enter", "character-back", "character-delete", "view-all", "npc-talk", "npc-choose", "npc-input", "pickup", "sit", "stand", "chair", "item-move", "item-drop", "item-split", "cash-enter", "cash-exit", "cash-buy", "cash-gift", "cash-retrieve", "cash-coupon", "cash-name-rules", "cash-world-rules", "skill-use", "skill-down", "skill-up", "skill-cancel", "skill-learn", "skill-assign", "buff-cancel", "cash-item-open", "cash-item-use", "reset-open", "ap-reset", "sp-reset", "scripted-item", "use-item", "equip", "unequip", "window",
                "move", "jump", "portal", "attack", "party-create",
-               "party-leave", "party-invite", "party-accept"}
+               "party-leave", "party-invite", "party-accept", "party-deny", "party-kick", "party-leader", "party-search-start", "party-search-stop"}
     for item in actions:
         if (not isinstance(item, list) or not item or not isinstance(item[0], str)
                 or item[0] not in allowed
@@ -952,8 +958,8 @@ def main() -> None:
                     help="Seconds to wait for --wait-state (defaults to --timeout)")
     sp.add_argument("--wait-state", help="Wait for a state predicate after submitting chat")
     sp.set_defaults(func=cmd_gm)
-    sp = sub.add_parser("act", help="Semantic action: pickup, sit, stand, chair <setup-slot>, item-move <tab> <src> <dst> <whole-count>, item-drop <tab> <slot> <quantity>, scripted-item <use-slot>, character-choose <name>, npc-talk <oid>, npc-choose next|yes|no|prev|close|<n>, use-item <slot>, equip <slot>, unequip <slot>, window <stats|items|equipment> <open|close>, move left|right|up|down <ms>, jump, portal, attack")
-    sp.add_argument("action", choices=["observe", "login-notice", "pic-cancel", "world-choose", "channel-choose", "channel-change", "logout", "character-choose", "character-enter", "character-back", "character-delete", "view-all", "npc-talk", "npc-choose", "pickup", "sit", "stand", "chair", "item-move", "item-drop", "item-split", "cash-enter", "cash-exit", "cash-buy", "cash-gift", "cash-retrieve", "cash-coupon", "cash-name-rules", "cash-world-rules", "skill-use", "skill-down", "skill-up", "skill-cancel", "skill-learn", "skill-assign", "buff-cancel", "reset-open", "ap-reset", "sp-reset", "scripted-item", "use-item", "equip", "unequip", "window", "move", "jump", "portal", "attack", "party-create", "party-leave", "party-invite", "party-accept"])
+    sp = sub.add_parser("act", help="Semantic action: pickup, sit, stand, chair <setup-slot>, item-move <tab> <src> <dst> <whole-count>, item-drop <tab> <slot> <quantity>, scripted-item <use-slot>, character-choose <name>, npc-talk <oid>, npc-choose next|yes|no|prev|close|<n>, npc-input <text|number|style-index>, use-item <slot>, equip <slot>, unequip <slot>, window <stats|items|equipment> <open|close>, move left|right|up|down <ms>, jump [down|up|left|right], portal, attack")
+    sp.add_argument("action", choices=["map-geometry", "mts-enter", "mts-action", "chat-send", "market-open", "market-action", "social-open", "social-action", "observe", "login-notice", "pic-cancel", "world-choose", "channel-choose", "channel-change", "logout", "character-choose", "character-enter", "character-back", "character-delete", "view-all", "npc-talk", "npc-choose", "npc-input", "pickup", "sit", "stand", "chair", "item-move", "item-drop", "item-split", "cash-enter", "cash-exit", "cash-buy", "cash-gift", "cash-retrieve", "cash-coupon", "cash-name-rules", "cash-world-rules", "skill-use", "skill-down", "skill-up", "skill-cancel", "skill-learn", "skill-assign", "buff-cancel", "cash-item-open", "cash-item-use", "reset-open", "ap-reset", "sp-reset", "scripted-item", "use-item", "equip", "unequip", "window", "move", "jump", "portal", "attack", "party-create", "party-leave", "party-invite", "party-accept", "party-deny", "party-kick", "party-leader", "party-search-start", "party-search-stop"])
     sp.add_argument("arg", nargs="*")
     sp.add_argument("--timeout", type=float, default=5.0)
     sp.add_argument("--completion-timeout", type=float, help="Seconds to wait for --wait-state (defaults to --timeout)")

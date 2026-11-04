@@ -16,10 +16,15 @@
 //	along with this program.  If not, see <https://www.gnu.org/licenses/>.		//
 //////////////////////////////////////////////////////////////////////////////////
 #include "UIChatBar.h"
+#include "UISocial.h"
+#include "UIMarket.h"
+#include "UIMTS.h"
+#include "../UI.h"
 
 #include "../../HeadlessState.h"
 
 #include <cstdlib>
+#include <sstream>
 
 #include "../Components/MapleButton.h"
 
@@ -94,7 +99,8 @@ namespace ms
 		chatcover = input["layer:backgrnd"];
 
 		chatfield = Textfield(Text::A11M, Text::LEFT, Color::Name::WHITE,
-							  Rectangle<int16_t>(Point<int16_t>(62, -9), Point<int16_t>(330, 8)), 0);
+							  Rectangle<int16_t>(Point<int16_t>(62, -9), Point<int16_t>(330, 8)), 160);
+		chatfield.set_horizontal_scroll(true);
 		chatfield.set_state(chatopen ? Textfield::State::NORMAL : Textfield::State::DISABLED);
 
 		chatfield.set_enter_callback(
@@ -108,7 +114,7 @@ namespace ms
 						{
 							msg.erase(last + 1);
 
-							GeneralChatPacket(msg, true).dispatch();
+							if (!submit(msg)) return;
 
 							lastentered.push_back(msg);
 							lastpos = lastentered.size();
@@ -427,6 +433,53 @@ namespace ms
 		return bounds.contains(cursorpos);
 	}
 
+	bool UIChatBar::submit(const std::string &input)
+	{
+		if (input.empty()) return false;
+		std::istringstream in(input);
+		std::string command, target, text;
+		in >> command;
+		auto error = [&](const std::string &message) {
+			send_chatline(message, RED); return false;
+		};
+		auto remainder = [&]() { std::string value; std::getline(in >> std::ws, value); return value; };
+		if(command=="/mts"){if(!MTSState::get().opened)OutPacket(0x9c).dispatch();return true;}
+		if(command=="/wedding"){UI::get().emplace<UISocial>("marriage");return true;}
+		if(command=="/newyear"){UI::get().emplace<UISocial>("newyear");return true;}
+		if (command == "/market") { UI::get().emplace<UIMarket>(); return true; }
+		if (command == "/guide" || command == "/incubator" || command == "/family" || command == "/partyui" || command == "/social" || command == "/messenger" || command == "/notes") {
+            UI::get().emplace<UISocial>(command == "/guide" || command == "/incubator" ? "guide" : command == "/family" ? "family" : command == "/partyui" ? "party" : command == "/messenger" ? "messenger" : command == "/notes" ? "notes" : "buddy"); return true;
+        }
+        if (command == "/buddy") {
+            in >> target; text = remainder();
+            auto message = SocialState::get().request("buddy-send", target, text);
+            return message.empty() ? true : error(message);
+        }
+		if (command == "/helpchat") {
+			send_chatline("/social; /messenger; /notes; /buddy name text; /whisper name text; /find name; /party text; /guild text; /alliance text; /spouse text", YELLOW);
+			return true;
+		}
+		if (command == "/whisper" || command == "/find") {
+			in >> target; text = remainder();
+			if (target.empty() || target.size() > 13 || (command == "/whisper" && (text.empty() || text.size() > 127)))
+				return error("Usage: /whisper name text (1-127 characters), or /find name");
+			WhisperPacket(target, text, command == "/find").dispatch();
+			return true;
+		}
+		int mode = command == "/party" ? 1 : command == "/guild" ? 2 : command == "/alliance" ? 3 : -1;
+		if (mode >= 0 || command == "/spouse") {
+			std::vector<int32_t> recipients;
+			text = remainder();
+			if (text.empty() || text.size() > 127) return error("Chat text must contain 1-127 characters.");
+			if (command == "/spouse") SpouseChatPacket(text).dispatch();
+			else GroupChatPacket(mode, recipients, text).dispatch();
+			return true;
+		}
+		if (input.size() > 127) return error("Chat text must contain at most 127 characters.");
+		GeneralChatPacket(input, true).dispatch();
+		return true;
+	}
+
 	void UIChatBar::send_chatline(const std::string &line, LineType type)
 	{
 		HeadlessState::event("chat", ",\"line\":" + std::to_string(static_cast<int>(type)) + ",\"text\":\"" + HeadlessState::escape(line) + "\"");
@@ -547,7 +600,14 @@ namespace ms
 	{
 		switch (buttonid)
 		{
-			case Buttons::BT_OPENCHAT:
+			case Buttons::BT_CHAT_TARGET:
+                UI::get().remove_textfield();
+                UI::get().emplace<UISocial>("buddy");
+                break;
+            case Buttons::BT_HELP:
+                submit("/helpchat");
+                break;
+            case Buttons::BT_OPENCHAT:
 			case Buttons::BT_CLOSECHAT:
 				toggle_chat();
 				break;

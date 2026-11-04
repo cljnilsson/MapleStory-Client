@@ -1,3 +1,5 @@
+#include "../../IO/UITypes/UIMarket.h"
+#include "../../IO/UITypes/UIMTS.h"
 //////////////////////////////////////////////////////////////////////////////////
 //	This file is part of the continued Journey MMORPG client					//
 //	Copyright (C) 2015-2019  Daniel Allendorf, Ryan Payton						//
@@ -64,6 +66,9 @@ namespace ms
 
 	void SetFieldHandler::handle(InPacket& recv) const
 	{
+        MarketState::get() = MarketState{};
+ MTSState::get().opened=false;
+ if(auto panel=UI::get().get_element<UIMTS>())panel->deactivate();
 		CashShopState::get().opened = false;
 		CashShopState::get().pending.clear();
 		Constants::Constants::get().set_viewwidth(Setting<Width>::get().load());

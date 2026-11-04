@@ -46,15 +46,36 @@ namespace ms
 
 		Point<int16_t> absp = bounds.get_left_top() + posiiton;
 
-		if (text.size() > 0)
-			textlabel.draw(absp);
-
-		if (state == State::FOCUSED && showmarker)
+		const Text *label = &textlabel;
+		size_t marker_index = markerpos;
+		if (horizontal_scroll)
 		{
-			Point<int16_t> mpos = absp + Point<int16_t>(textlabel.advance(markerpos), -1);
-
-			marker.draw(mpos);
+			if (visible_source != text || visible_marker != markerpos)
+			{
+				visible_source = text; visible_marker = markerpos;
+				const auto width = std::max<int16_t>(1, bounds.get_horizontal().length() - 10);
+				visible_start = 0;
+				while (visible_start < markerpos && textlabel.advance(markerpos) - textlabel.advance(visible_start) > width)
+					++visible_start;
+				size_t end = visible_start;
+				while (end < text.size() && textlabel.advance(end + 1) - textlabel.advance(visible_start) <= width) ++end;
+				visible_label = textlabel;
+				visible_label.change_text(crypt > 0 ? std::string(end - visible_start, crypt) : text.substr(visible_start, end - visible_start));
+			}
+			label = &visible_label;
+			marker_index -= visible_start;
 		}
+		if (!text.empty()) label->draw(absp);
+		if (state == State::FOCUSED && showmarker)
+			marker.draw(absp + Point<int16_t>(label->advance(marker_index), -1));
+
+	}
+
+	void Textfield::set_horizontal_scroll(bool enabled)
+	{
+		horizontal_scroll = enabled;
+		textlabel.change_maxwidth(enabled ? 32767 : 0);
+		visible_marker = static_cast<size_t>(-1);
 	}
 
 	void Textfield::update(Point<int16_t> parent)

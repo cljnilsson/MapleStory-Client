@@ -16,6 +16,7 @@
 //	along with this program.  If not, see <https://www.gnu.org/licenses/>.		//
 //////////////////////////////////////////////////////////////////////////////////
 #include "NpcInteractionHandlers.h"
+#include <stdexcept>
 
 #include "../IO/UI.h"
 #include "../IO/UITypes/UINpcTalk.h"
@@ -37,11 +38,31 @@ namespace ms
 		if (msgtype == 0 && recv.length() > 0)
 			style = recv.read_short();
 
-		UI::get().emplace<UINpcTalk>();
+		std::string initial;
+        int32_t minimum = 0, maximum = 0;
+        std::vector<int32_t> styles;
+        if (msgtype == 2) { initial = recv.read_string(); recv.read_int(); }
+        else if (msgtype == 3) {
+            initial = std::to_string(recv.read_int());
+            minimum = recv.read_int(); maximum = recv.read_int(); recv.read_int();
+            if (minimum > maximum) throw std::runtime_error("Invalid NPC number range");
+        } else if (msgtype == 7) {
+            auto count = static_cast<uint8_t>(recv.read_byte());
+            for (unsigned i = 0; i < count; ++i) styles.push_back(recv.read_int());
+            initial = "0";
+        }
+        if ((msgtype == 2 || msgtype == 3 || msgtype == 7) && recv.length())
+            throw std::runtime_error("Trailing NPC input payload");
+
+        UI::get().emplace<UINpcTalk>();
 		UI::get().enable();
 
 		if (auto npctalk = UI::get().get_element<UINpcTalk>())
-			npctalk->change_text(npcid, msgtype, style, speaker, text);
+			{
+            npctalk->change_text(npcid, msgtype, style, speaker, text);
+            if (msgtype == 2 || msgtype == 3 || msgtype == 7)
+                npctalk->configure_input(initial, minimum, maximum, styles);
+        }
 	}
 
 	void OpenNpcShopHandler::handle(InPacket& recv) const

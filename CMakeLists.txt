@@ -25,6 +25,9 @@ include_directories(Template)
 include_directories(Util)
 
 add_executable(HeavenClient
+    IO/UITypes/UIMTS.cpp
+    IO/UITypes/UIMarket.cpp
+    IO/UITypes/UISocial.cpp
     HeadlessState.cpp
     Audio/Audio.cpp
     Audio/Audio.h

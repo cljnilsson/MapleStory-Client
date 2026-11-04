@@ -1,4 +1,10 @@
+#include <algorithm>
+#include "IO/UITypes/UISocial.h"
+#include "IO/UITypes/UIMarket.h"
+#include "IO/UITypes/UIMTS.h"
 #include "HeadlessState.h"
+#include "Net/Handlers/MessagingHandlers.h"
+#include "Net/Handlers/InventoryHandlers.h"
 #include "Data/SkillData.h"
 #include "Net/Packets/AttackAndSkillPackets.h"
 #include "Net/Packets/PlayerPackets.h"
@@ -164,7 +170,9 @@ namespace ms
 						else o << ",\"item_id\":null,\"mesos\":" << drop->get_amount();
 					}
 					else if (auto *reactor = dynamic_cast<Reactor *>(obj.get()))
-						o << ",\"id\":" << reactor->get_id() << ",\"state\":" << reactor->get_state();
+						o << ",\"id\":" << reactor->get_id() << ",\"state\":" << reactor->get_state()
+						  << ",\"event_type\":" << reactor->get_event_type()
+						  << ",\"hittable\":" << (reactor->is_hittable() ? "true" : "false");
 					o << "}";
 				}
 				o << "],\"" << kind << "_truncated\":" << (truncated ? "true" : "false");
@@ -339,13 +347,15 @@ namespace ms
 					first = false;
 					pos = close;
 				}
-				o << "]}";
-			}
+				o << "]";
+                if (auto talk = UI::get().get_element<UINpcTalk>()) talk->write_input_state(o);
+                o << "}";
+            }
 
-			void act_result(const std::string &id, const std::string &name, bool ok, const std::string &error)
+            void act_result(const std::string &id, const std::string &name, bool ok, const std::string &error, const std::string &fields = "")
 			{
 				event("act", ",\"id\":\"" + esc(id) + "\",\"act\":\"" + esc(name) + "\",\"ok\":" + (ok ? "true" : "false")
-							 + (ok ? "" : ",\"error\":\"" + esc(error) + "\""));
+							 + (ok ? "" : ",\"error\":\"" + esc(error) + "\"") + fields);
 			}
 
 			struct Hold
@@ -354,6 +364,8 @@ namespace ms
 				int32_t action = 0;
 				std::string id, name;
 				std::chrono::steady_clock::time_point until;
+				bool jump_pending = false;
+				std::chrono::steady_clock::time_point jump_at;
 			} hold;
 			std::string canceled_id;
 
@@ -370,6 +382,11 @@ namespace ms
 					Stage::get().send_key(KeyType::Id::ACTION, hold.action, false);
 					hold.active = false;
 					act_result(hold.id, hold.name, true, "");
+				}
+				else if (hold.active && hold.jump_pending && std::chrono::steady_clock::now() >= hold.jump_at)
+				{
+					hold.jump_pending = false;
+					key_tap(KeyAction::Id::JUMP);
 				}
 			}
 
@@ -415,6 +432,39 @@ namespace ms
 				{
 					canceled_id.clear();
 					return act_result(id, name, false, "request canceled by caller");
+				}
+
+				if (name == "map-geometry")
+				{
+					if (!arg.empty()) return act_result(id, name, false, "expected no arguments");
+					if (screen != "in_game") return act_result(id, name, false, "field is not active");
+					// Export once per request, outside the recurring entity snapshot.
+					std::ostringstream o;
+					o << ",\"geometry\":{\"map\":" << Stage::get().get_mapid()
+					  << ",\"field_entry_seq\":" << field_entry_seq << ",\"footholds\":[";
+					std::vector<uint16_t> ids;
+					const auto &footholds = Stage::get().get_footholds().get_footholds();
+					for (const auto &entry : footholds) ids.push_back(entry.first);
+					std::sort(ids.begin(), ids.end());
+					bool comma = false;
+					for (auto fid : ids)
+					{
+						const auto &f = footholds.at(fid);
+						o << (comma ? "," : "") << "{\"id\":" << f.id() << ",\"layer\":" << int(f.layer())
+						  << ",\"prev\":" << f.prev() << ",\"next\":" << f.next()
+						  << ",\"x1\":" << f.x1() << ",\"y1\":" << f.y1()
+						  << ",\"x2\":" << f.x2() << ",\"y2\":" << f.y2() << '}';
+						comma = true;
+					}
+					o << "],\"climbables\":["; comma = false;
+					for (const auto &l : Stage::get().get_ladders())
+					{
+						o << (comma ? "," : "") << "{\"ladder\":" << (l.is_ladder() ? "true" : "false")
+						  << ",\"x\":" << l.get_x() << ",\"y1\":" << l.get_y1() << ",\"y2\":" << l.get_y2() << '}';
+						comma = true;
+					}
+					o << "]}";
+					return act_result(id, name, true, "", o.str());
 				}
 
 				if (name == "observe")
@@ -539,7 +589,7 @@ namespace ms
 					bool ok = shop && shop->request_exit();
 					return act_result(id, name, ok, ok ? "" : "Cash Shop exit unavailable");
 				}
-				if (name.compare(0, 5, "cash-") == 0 && name != "cash-enter")
+				if (name.compare(0, 5, "cash-") == 0 && name != "cash-enter" && name != "cash-item-open" && name != "cash-item-use")
 				{
 					bool ok = screen == "cash_shop" && CashShopState::request(name, arg);
 					return act_result(id, name, ok, ok ? "" : "invalid Cash Shop request, unavailable inventory or request pending");
@@ -582,6 +632,52 @@ namespace ms
 				if (quit && quit->is_active())
 					return act_result(id, name, false, "dismiss the active logout dialog first");
 
+                if(name=="mts-enter" || name=="mts-action"){
+ if(name=="mts-enter"){if(screen!="in_game" || !arg.empty())return act_result(id,name,false,"enter a field first");OutPacket(0x9c).dispatch();return act_result(id,name,true,"");}
+ auto panel=UI::get().get_element<UIMTS>();if(screen!="mts" || !panel || !panel->is_active())return act_result(id,name,false,"MTS is not open");
+ std::istringstream input(arg);std::string action,tail;int index=-1;input>>action;if(input>>index){if(input>>tail)return act_result(id,name,false,"unexpected arguments");}else if(!input.eof())return act_result(id,name,false,"expected listing index");
+ bool ok=panel->act(action,index);dirty=true;return act_result(id,name,ok,ok?"":MTSState::get().status);
+ }
+                if (name == "market-open" || name == "market-action")
+                {
+                    if (screen != "in_game") return act_result(id, name, false, "enter a field first");
+                    if (name == "market-open") { UI::get().emplace<UIMarket>(); return act_result(id,name,true,""); }
+                    auto panel=UI::get().get_element<UIMarket>();
+                    if (!panel || !panel->is_active()) return act_result(id,name,false,"open the market window first");
+                    std::istringstream input(arg); std::string action, values; input >> action; std::getline(input >> std::ws,values);
+                    bool ok=panel->act(action,values); dirty=true; return act_result(id,name,ok,ok?"":MarketState::get().status);
+                }
+				if (name == "social-open")
+				{
+					if (screen != "in_game") return act_result(id, name, false, "enter a field first");
+					if (arg != "buddy" && arg != "messenger" && arg != "notes" && arg != "party" && arg != "family" && arg != "guide" && arg != "newyear" && arg != "marriage")
+						return act_result(id, name, false, "expected buddy, messenger, notes, party, family, guide, newyear or marriage");
+					UI::get().emplace<UISocial>(arg);
+					dirty = true;
+					return act_result(id, name, true, "");
+				}
+				if (name == "social-action")
+				{
+					auto panel = UI::get().get_element<UISocial>();
+					if (screen != "in_game" || !panel || !panel->is_active())
+						return act_result(id, name, false, "open the social window first");
+					std::istringstream input(arg);
+					std::string action, target, text;
+					input >> action >> target;
+					std::getline(input >> std::ws, text);
+					bool ok = panel->act(action, target == "-" ? "" : target, text);
+					dirty = true;
+					return act_result(id, name, ok, ok ? "" : SocialState::get().status);
+				}
+				if (name == "chat-send")
+				{
+					if (screen != "in_game") return act_result(id, name, false, "enter a field first");
+					const auto &text = arg;
+					auto chat = UI::get().get_element<UIChatBar>();
+					if (!chat || !chat->submit(text)) return act_result(id, name, false, "invalid chat request; see chat feedback");
+					return act_result(id, name, true, "");
+				}
+
 				if (name == "channel-change")
 				{
 					auto cashshop = UI::get().get_element<UICashShop>();
@@ -595,7 +691,7 @@ namespace ms
 					return act_result(id, name, true, "");
 				}
 
-				if (name == "reset-open" || name == "ap-reset" || name == "sp-reset" || name == "pickup" || name == "sit" || name == "stand" || name == "chair" || name == "item-move" || name == "item-drop" || name == "item-split" || name == "scripted-item" || name.rfind("skill-", 0) == 0 || name == "buff-cancel")
+				if (name == "cash-item-open" || name == "cash-item-use" || name == "reset-open" || name == "ap-reset" || name == "sp-reset" || name == "pickup" || name == "sit" || name == "stand" || name == "chair" || name == "item-move" || name == "item-drop" || name == "item-split" || name == "scripted-item" || name.rfind("skill-", 0) == 0 || name == "buff-cancel")
 				{
 					auto cash = UI::get().get_element<UICashShop>();
 					if (hold.active || dialog_open || (cash && cash->is_active())
@@ -605,14 +701,25 @@ namespace ms
 						return act_result(id, name, false, "finish the active move or dialog first");
 				}
 
-				if (name == "reset-open")
+				if (name == "reset-open" || name == "cash-item-open")
 				{
 					if (!num(n) || n < 1 || n > 32767) return act_result(id, name, false, "expected cash slot");
 					int32_t item = inv.get_item_id(InventoryType::CASH, n);
-					if (item / 10000 != 505) return act_result(id, name, false, "reset item required");
-					UI::get().emplace<UICashReset>(n, item);
+					if (!UICashItemDialog::supports(item) || (name == "reset-open" && item / 10000 != 505)) return act_result(id, name, false, "supported cash item required");
+					UI::get().emplace<UICashItemDialog>(n, item);
 					dirty = true;
 					return act_result(id, name, true, "");
+				}
+				if (name == "cash-item-use")
+				{
+					std::istringstream args(arg); int32_t slot; std::string values;
+					if (!(args >> slot) || slot < 1 || slot > 32767) return act_result(id, name, false, "expected cash slot and target values");
+					std::getline(args, values);
+					int32_t item = inv.get_item_id(InventoryType::CASH, slot);
+					if (item / 10000 == 505) return act_result(id, name, false, "use AP/SP reset action");
+					auto error = UICashItemDialog::request(slot, item, values);
+					if (!error.empty()) return act_result(id, name, false, error);
+					dirty = true; return act_result(id, name, true, "");
 				}
 				if (name == "ap-reset" || name == "sp-reset")
 				{
@@ -623,7 +730,7 @@ namespace ms
 					const int32_t item = inv.get_item_id(InventoryType::CASH, slot);
 					if ((name == "ap-reset" && item != 5050000) || (name == "sp-reset" && (item <= 5050000 || item / 10000 != 505)))
 						return act_result(id, name, false, "matching AP/SP Reset required");
-					auto error = UICashReset::request(slot, item, to + " " + from);
+					auto error = UICashItemDialog::request(slot, item, to + " " + from);
 					if (!error.empty()) return act_result(id, name, false, error);
 					dirty = true;
 					return act_result(id, name, true, "");
@@ -720,7 +827,12 @@ namespace ms
 					else if (!num(v) || v < -1 || v > 1) return act_result(id, name, false, "expected next|yes|ok|no|prev|close|-1|0|1");
 					if (!talk->headless_respond(v)) return act_result(id, name, false, "unsupported dialog type");
 				}
-				else if (name == "use-item")
+				else if (name == "npc-input") {
+                    auto talk = UI::get().get_element<UINpcTalk>();
+                    if (!dialog_open || !talk || !talk->submit_input(arg))
+                        return act_result(id, name, false, "input does not match the received NPC dialog or range");
+                }
+                else if (name == "use-item")
 				{
 					if (!num(n)) return act_result(id, name, false, "expected use slot");
 					int32_t itemid = inv.get_item_id(InventoryType::Id::USE, n);
@@ -794,23 +906,48 @@ namespace ms
 					hold = {true, action, id, name, std::chrono::steady_clock::now() + std::chrono::milliseconds(ms)};
 					return;
 				}
-				else if (name == "party-create")
-					CreatePartyPacket().dispatch();
-				else if (name == "party-leave")
-					LeavePartyPacket().dispatch();
-				else if (name == "party-invite")
+				else if (name == "party-create" || name == "party-leave" || name == "party-invite" || name == "party-accept" || name == "party-deny" || name == "party-kick" || name == "party-leader" || name == "party-search-start" || name == "party-search-stop")
 				{
-					if (arg.empty()) return act_result(id, name, false, "expected character name");
-					InviteToPartyPacket(arg).dispatch();
-				}
-				else if (name == "party-accept")
-				{
-					if (!invite_party) return act_result(id, name, false, "no pending party invite");
-					JoinPartyPacket(invite_party).dispatch();
-					invite_party = 0;
+					auto error = party_request(name, arg, arg);
+					if (!error.empty()) return act_result(id, name, false, error);
 				}
 				else if (name == "jump")
-					key_tap(KeyAction::Id::JUMP);
+				{
+					if (hold.active) return act_result(id, name, false, "finish the active move first");
+					if (arg == "left" || arg == "right")
+					{
+						auto &player = Stage::get().get_player();
+						if (!player.get_phobj().onground || player.is_attacking() || player.get_stats().get_stat(MapleStat::Id::HP) <= 0)
+							return act_result(id, name, false, "directional jump requires a living player standing on a foothold");
+						const auto action = arg == "left" ? KeyAction::Id::LEFT : KeyAction::Id::RIGHT;
+						const auto now = std::chrono::steady_clock::now();
+						Stage::get().send_key(KeyType::Id::ACTION, action, true);
+						// Build normal walking momentum before Jump, without overlapping
+						// native focus-dependent input or bypassing collision physics.
+						hold = {true, action, id, name, now + std::chrono::milliseconds(1000), true, now + std::chrono::milliseconds(150)};
+						return;
+					}
+					if (arg == "up")
+					{
+						// Keep Up pressed through the jump so normal airborne ladder
+						// detection can grab a rope that hangs above the player.
+						Stage::get().send_key(KeyType::Id::ACTION, KeyAction::Id::UP, true);
+						key_tap(KeyAction::Id::JUMP);
+						hold = {true, KeyAction::Id::UP, id, name, std::chrono::steady_clock::now() + std::chrono::milliseconds(1000)};
+						return;
+					}
+					if (!arg.empty() && arg != "down") return act_result(id, name, false, "expected empty argument, down, up, left or right");
+					if (arg == "down")
+					{
+						auto &player = Stage::get().get_player();
+						if (!player.get_phobj().onground || !player.get_phobj().enablejd || player.is_attacking())
+							return act_result(id, name, false, "cannot jump down from this foothold");
+						Stage::get().send_key(KeyType::Id::ACTION, KeyAction::Id::DOWN, true);
+						key_tap(KeyAction::Id::JUMP);
+						Stage::get().send_key(KeyType::Id::ACTION, KeyAction::Id::DOWN, false);
+					}
+					else key_tap(KeyAction::Id::JUMP);
+				}
 				else if (name == "portal")
 					key_tap(KeyAction::Id::UP);
 				else if (name == "attack")
@@ -822,9 +959,70 @@ namespace ms
 			}
 		}
 
+		std::vector<std::string> party_rows()
+		{
+			std::vector<std::string> rows;
+			for (const auto &m : party_members) rows.push_back(m.name);
+			return rows;
+		}
+
+		std::string party_request(const std::string &action, const std::string &target, const std::string &options)
+		{
+			if (screen != "in_game") return "Enter the game first.";
+			class Request : public OutPacket
+			{
+			public:
+				Request(int opcode) : OutPacket(opcode) {}
+				using OutPacket::write_byte;
+				using OutPacket::write_int;
+				using OutPacket::write_string;
+			};
+			if (action == "party-create") CreatePartyPacket().dispatch();
+			else if (action == "party-leave") LeavePartyPacket().dispatch();
+			else if (action == "party-invite")
+			{
+				if (target.empty() || target.size() > 13 || target.find(' ') != std::string::npos)
+					return "Enter a character name (1-13 characters).";
+				InviteToPartyPacket(target).dispatch();
+			}
+			else if (action == "party-accept" || action == "party-deny")
+			{
+				if (!invite_party) return "No pending party invitation.";
+				if (action == "party-accept") JoinPartyPacket(invite_party).dispatch();
+				else
+				{
+					Request p(0x7d); p.write_byte(0); p.write_string(invite_from); p.dispatch();
+				}
+				invite_party = 0; invite_from.clear();
+			}
+			else if (action == "party-kick" || action == "party-leader")
+			{
+				if (party_leader != Stage::get().get_player().get_oid()) return "Only the party leader can do this.";
+				auto member = std::find_if(party_members.begin(), party_members.end(), [&](const auto &m) { return m.name == target; });
+				if (member == party_members.end() || member->id == party_leader) return "Select another received party member.";
+				if (action == "party-kick") ExpelFromPartyPacket(member->id).dispatch();
+				else ChangePartyLeaderPacket(member->id).dispatch();
+			}
+			else if (action == "party-search-start")
+			{
+				if (!party_id || party_leader != Stage::get().get_player().get_oid()) return "Create a party and become its leader first.";
+				int min = 0, max = 0; std::string extra;
+				std::istringstream input(options);
+				if (!(input >> min >> max) || (input >> extra) || min < 1 || max > 200 || max < min || max - min > 30)
+					return "Search options: minLevel maxLevel (all jobs); levels 1-200, range at most 30.";
+				Request p(0xde); p.write_int(min); p.write_int(max); p.write_int(6); p.write_int(0x7fffffff); p.dispatch();
+			}
+			else if (action == "party-search-stop") { Request(0xdf).dispatch(); }
+			else return "Unknown party action.";
+			SocialState::get().changed(action + " requested; wait for the server response.");
+			dirty = true;
+			return {};
+		}
+
 		void on_party(InPacket &recv)
 		{
 			int8_t mode = recv.read_byte();
+			SocialState::get().changed("Party response " + std::to_string(int(mode)));
 			auto roster = [&]() {
 				PartyMember m[6];
 				for (auto &x : m) x.id = recv.read_int();
@@ -843,11 +1041,13 @@ namespace ms
 			{
 				invite_party = recv.read_int();
 				invite_from = recv.read_string();
+				SocialState::get().changed("Party invitation from " + invite_from);
 				event("party_invite", ",\"party\":" + std::to_string(invite_party) + ",\"from\":\"" + esc(invite_from) + "\"");
 			}
 			else if (mode == 8)
 			{
 				party_id = recv.read_int();
+				party_leader = Stage::get().get_player().get_oid();
 				event("party_created", ",\"party\":" + std::to_string(party_id));
 			}
 			else if (mode == 7 || mode == 0x0c || mode == 0x0f)
@@ -877,6 +1077,10 @@ namespace ms
 					recv.skip_string();
 				party_id = pid;
 				roster();
+			}
+			else if (mode == 23)
+			{
+				SocialState::get().changed(recv.read_string() + " declined the party invitation.");
 			}
 			else if (mode == 0x1b)
 			{
@@ -970,6 +1174,9 @@ namespace ms
 				last_map = -1;
 				known.clear();
 				CashShopState::get() = CashShopState{};
+                SocialState::get() = SocialState{};
+                MarketState::get() = MarketState{};
+ MTSState::get()=MTSState{};
 				event("observations_reset", ",\"reason\":\"login\"");
 			}
 			if (std::string(name) == "in_game") { ++field_entry_seq; mob_statuses.clear(); buff_expiry.clear(); }
@@ -1029,6 +1236,8 @@ namespace ms
 				track_changes();
 				if (previous_map != -1 && previous_map != last_map)
 					cancel_hold("map changed during move");
+				if (Stage::get().get_player().get_stats().get_stat(MapleStat::Id::HP) <= 0)
+					cancel_hold("player died during move");
 				poll_hold();
 			}
 			else
@@ -1053,12 +1262,39 @@ namespace ms
 			  << "\",\"assets\":\"" << esc(asset_id && *asset_id ? asset_id : "runtime-nx") << "\""
 			  << ",\"session_id\":\"" << esc(session_id) << "\",\"seq\":" << ++snapshot_seq
 			  << ",\"progress\":" << progress << ",\"uptime_ms\":" << elapsed_ms
-			  << ",\"capabilities\":[\"reset-open\",\"ap-reset\",\"sp-reset\",\"cash-enter\",\"cash-exit\",\"cash-buy\",\"cash-gift\",\"cash-retrieve\",\"cash-coupon\",\"cash-name-rules\",\"cash-world-rules\",\"observe\",\"view-all\",\"login-notice\",\"pic-submit\",\"pic-cancel\",\"world-choose\",\"channel-choose\",\"channel-change\",\"logout\",\"character-choose\",\"character-enter\",\"character-back\",\"character-delete\",\"npc-talk\",\"npc-choose\",\"pickup\",\"sit\",\"stand\",\"chair\",\"item-move\",\"item-drop\",\"item-split\",\"scripted-item\",\"use-item\",\"equip\",\"unequip\",\"window\",\"move\",\"jump\",\"portal\",\"attack\",\"skill-use\",\"skill-down\",\"skill-up\",\"skill-cancel\",\"skill-learn\",\"skill-assign\",\"buff-cancel\",\"party-create\",\"party-leave\",\"party-invite\",\"party-accept\"]"
+			  << ",\"capabilities\":[\"map-geometry\",\"mts-enter\",\"mts-action\",\"market-open\",\"market-action\",\"social-open\",\"social-action\",\"chat-send\",\"cash-item-open\",\"cash-item-use\",\"reset-open\",\"ap-reset\",\"sp-reset\",\"cash-enter\",\"cash-exit\",\"cash-buy\",\"cash-gift\",\"cash-retrieve\",\"cash-coupon\",\"cash-name-rules\",\"cash-world-rules\",\"observe\",\"view-all\",\"login-notice\",\"pic-submit\",\"pic-cancel\",\"world-choose\",\"channel-choose\",\"channel-change\",\"logout\",\"character-choose\",\"character-enter\",\"character-back\",\"character-delete\",\"npc-talk\",\"npc-choose\",\"npc-input\",\"pickup\",\"sit\",\"stand\",\"chair\",\"item-move\",\"item-drop\",\"item-split\",\"scripted-item\",\"use-item\",\"equip\",\"unequip\",\"window\",\"move\",\"jump\",\"portal\",\"attack\",\"skill-use\",\"skill-down\",\"skill-up\",\"skill-cancel\",\"skill-learn\",\"skill-assign\",\"buff-cancel\",\"party-create\",\"party-leave\",\"party-invite\",\"party-accept\",\"party-deny\",\"party-kick\",\"party-leader\",\"party-search-start\",\"party-search-stop\"]"
 			  << ",\"observation\":{\"export_paused\":" << (export_paused ? "true" : "false") << ",\"enabled\":" << (trace ? "true" : "false") << ",\"count\":" << observations
 			  << ",\"dropped\":" << dropped << ",\"limit\":4096,\"render_frame\":" << render_frame
 			  << ",\"exports\":" << export_count << ",\"export_us\":" << export_us << ",\"export_max_us\":" << export_max_us << "}"
 			  << ",\"screen\":\"" << screen << "\""
 			  << ",\"logout_dialog\":" << (UI::get().is_element_active(UIElement::Type::QUIT) ? "true" : "false");
+			{
+				BroadcastState::get().snapshot(o);
+				SocialState::get().snapshot(o);
+                MarketState::get().snapshot(o);
+ MTSState::get().snapshot(o);
+				const auto &owl = OwlSearchState::get();
+				o << ",\"owl\":{\"known\":" << (owl.known ? "true" : "false") << ",\"item\":" << owl.item
+				  << ",\"draw_calls\":" << owl.draw_calls << ",\"rows\":[";
+				bool comma = false;
+				for (const auto &row : owl.rows)
+				{
+					if (comma) o << ','; comma = true;
+					o << "{\"owner\":\"" << esc(row.owner) << "\",\"description\":\"" << esc(row.description)
+					  << "\",\"map\":" << row.map << ",\"bundles\":" << row.bundles << ",\"quantity\":" << row.quantity
+					  << ",\"price\":" << row.price << ",\"owner_id\":" << row.owner_id << ",\"channel\":" << row.channel << ",\"type\":" << row.type << '}';
+				}
+				o << "]},\"maple_life\":{\"known\":" << (MapleLifeState::get().known ? "true" : "false")
+				  << ",\"code\":" << MapleLifeState::get().code << ",\"name\":\"" << esc(MapleLifeState::get().name)
+				  << "\",\"draw_calls\":" << MapleLifeState::get().draw_calls << '}';
+				const auto &vega = VegaSpellState::get();
+				o << ",\"vega\":{\"pending\":" << (vega.pending ? "true" : "false")
+				  << ",\"started\":" << (vega.started ? "true" : "false") << ",\"code\":" << vega.code
+				  << ",\"model_updated\":" << (vega.model_updated ? "true" : "false")
+				  << ",\"equip_slot\":" << vega.equip_slot << ",\"scroll_slot\":" << vega.scroll_slot
+				  << ",\"elapsed_ms\":" << vega.elapsed_ms() << ",\"draw_calls\":" << vega.draw_calls
+				  << ",\"asset\":" << (vega.asset ? "true" : "false") << '}';
+			}
 			{
 				const auto& cash = CashShopState::get();
 				o << ",\"cash_shop\":{\"opened\":" << (cash.opened ? "true" : "false")
@@ -1083,7 +1319,7 @@ namespace ms
 				  << ",\"configured_channel\":" << int(Configuration::get().get_channelid()) + 1
 				  << ",\"pending_channel\":" << UIChannel::get_pending_channel()
 				  << ",\"field_entry_seq\":" << field_entry_seq << '}';
-			if (auto reset = UI::get().get_element_checked<UICashReset>(); reset && reset->is_active())
+			if (auto reset = UI::get().get_element_checked<UICashItemDialog>(); reset && reset->is_active())
 				o << ",\"reset_dialog\":{\"slot\":" << reset->get_slot() << ",\"item\":" << reset->get_item()
 				  << ",\"values\":\"" << esc(reset->get_values()) << "\",\"error\":\"" << esc(reset->get_error()) << "\"}";
 			else o << ",\"reset_dialog\":null";

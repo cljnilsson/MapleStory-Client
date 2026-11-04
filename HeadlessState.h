@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 #include <cstdint>
 
 #include "Net/InPacket.h"
@@ -30,6 +31,8 @@ namespace ms
 
 		// Parse a PARTY_OPERATION packet into the party snapshot / events.
 		void on_party(InPacket &recv);
+		std::string party_request(const std::string &action, const std::string &target, const std::string &options);
+		std::vector<std::string> party_rows();
 
 		// Bounded, opt-in diagnostic observations. IDs correlate model objects with
 		// their first draw invocation; drawing is not a pixel/visibility assertion.
