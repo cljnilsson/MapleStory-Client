@@ -702,7 +702,7 @@ The window exports its actual text and button positions under `market`.
 
 - Create: `permitID description`, using a received Cash store permit or merchant.
 - Stock: `inventory slot bundles quantity price` (inventory 1=Equip, 2=Use,
-  3=Setup, 4=ETC). Open lists the stock; Take uses a listing index before opening.
+  3=Setup, 4=ETC, 5=Cash). Open lists the stock; Take uses a listing index before opening.
 - Visit: an owner ID from the received directory. Buy: `listingIndex bundles`.
   Chat takes a message; Ban takes a received visitor name (player-shop owner).
 - Owl: an index from received Owl search results; sends the ordinary shop warp.

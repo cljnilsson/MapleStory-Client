@@ -127,10 +127,10 @@ std::string MarketState::request(const std::string &action,
     if (action == "stock") {
       if (!owner)
         return "Only the owner can stock items.";
-      if (!(in >> a >> b >> c >> d >> e) || !done() || a < 1 || a > 4 ||
+      if (!(in >> a >> b >> c >> d >> e) || !done() || a < 1 || a > 5 ||
           b < 1 || b > 32767 || c < 1 || d < 1 || c > 2000 || d > 2000 ||
           int64_t(c) * d > 2000 || e < 1)
-        return "Stock: inventory(1-4) slot bundles quantity price.";
+        return "Stock: inventory(1-5) slot bundles quantity price.";
       auto &inv = Stage::get().get_player().get_inventory();
       auto t = static_cast<InventoryType::Id>(a);
       bool enough = false;
